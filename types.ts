@@ -62,6 +62,7 @@ export interface ATSKeyword {
   status: 'present' | 'missing' | 'partial';
   frequency: number;
   importance: 'critical' | 'important';
+  analysis: string; // short contextual note, e.g. "Present in tools but overshadowed by TypeScript"
 }
 
 export interface ATSFormattingCheck {

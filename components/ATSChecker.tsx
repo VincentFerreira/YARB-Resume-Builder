@@ -13,21 +13,51 @@ interface ATSCheckerProps {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-const KeywordBadge: React.FC<{ kw: ATSKeyword }> = ({ kw }) => {
-  const cfg = {
-    present: { bg: 'bg-emerald-100 border-emerald-300 text-emerald-900', icon: <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" /> },
-    missing:  { bg: 'bg-red-100 border-red-300 text-red-900',            icon: <XCircle className="w-3 h-3 text-red-500 shrink-0" /> },
-    partial:  { bg: 'bg-amber-100 border-amber-300 text-amber-900',      icon: <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" /> },
-  };
-  const { bg, icon } = cfg[kw.status] ?? cfg.missing;
+const statusCfg = {
+  present: {
+    icon: <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />,
+    pill: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    row:  'border-l-2 border-emerald-400 bg-white',
+  },
+  missing: {
+    icon: <XCircle className="w-4 h-4 text-red-500 shrink-0" />,
+    pill: 'bg-red-100 text-red-800 border-red-300',
+    row:  'border-l-2 border-red-400 bg-white',
+  },
+  partial: {
+    icon: <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />,
+    pill: 'bg-amber-100 text-amber-800 border-amber-300',
+    row:  'border-l-2 border-amber-400 bg-white',
+  },
+} as const;
+
+const KeywordRow: React.FC<{ kw: ATSKeyword }> = ({ kw }) => {
+  const cfg = statusCfg[kw.status] ?? statusCfg.missing;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${bg}`}>
-      {icon}
-      {kw.keyword}
-      {kw.status === 'present' && kw.frequency > 0 && (
-        <span className="font-bold opacity-70">×{kw.frequency}</span>
-      )}
-    </span>
+    <div className={`flex items-start gap-2.5 p-2.5 rounded-lg ${cfg.row}`}>
+      <div className="mt-0.5">{cfg.icon}</div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold ${cfg.pill}`}>
+            {kw.keyword}
+          </span>
+          {kw.status === 'present' && kw.frequency > 0 && (
+            <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+              ×{kw.frequency} dans le CV
+            </span>
+          )}
+          {kw.status === 'missing' && (
+            <span className="text-xs text-red-500 font-semibold">absent</span>
+          )}
+          {kw.status === 'partial' && (
+            <span className="text-xs text-amber-600 font-semibold">partiel</span>
+          )}
+        </div>
+        {kw.analysis && (
+          <p className="text-xs text-slate-500 mt-1 leading-relaxed">{kw.analysis}</p>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -303,8 +333,8 @@ const ATSChecker: React.FC<ATSCheckerProps> = ({ cvData, aiProvider }) => {
             title="Mots-clés critiques"
             badge={`${criticals.filter(k => k.status === 'present').length}/${criticals.length} trouvés`}
           >
-            <div className="flex flex-wrap gap-1.5">
-              {criticals.map((kw, i) => <KeywordBadge key={i} kw={kw} />)}
+            <div className="space-y-1.5">
+              {criticals.map((kw, i) => <KeywordRow key={i} kw={kw} />)}
             </div>
           </SectionCard>
         )}
@@ -317,8 +347,8 @@ const ATSChecker: React.FC<ATSCheckerProps> = ({ cvData, aiProvider }) => {
             title="Mots-clés importants"
             badge={`${importants.filter(k => k.status === 'present').length}/${importants.length} trouvés`}
           >
-            <div className="flex flex-wrap gap-1.5">
-              {importants.map((kw, i) => <KeywordBadge key={i} kw={kw} />)}
+            <div className="space-y-1.5">
+              {importants.map((kw, i) => <KeywordRow key={i} kw={kw} />)}
             </div>
           </SectionCard>
         )}

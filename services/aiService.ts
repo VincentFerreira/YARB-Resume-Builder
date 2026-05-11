@@ -289,8 +289,8 @@ Analyze the CV against the job description and return a JSON object matching thi
 RULES:
 - overallScore: integer 0-100, current match between CV and job description
 - estimatedNewScore: integer 0-100, expected score after applying your recommendations
-- criticalKeywords: 5-10 non-negotiable keywords from the job (required skills, tools, certs). For each: keyword (exact term from JD), status ("present" if clearly in CV, "partial" if synonym/related found, "missing" if absent), frequency (exact count in CV, 0 if missing), importance: "critical"
-- importantKeywords: 5-10 secondary keywords. Same schema, importance: "important"
+- criticalKeywords: 5-10 non-negotiable keywords from the job (required skills, tools, certs). For each: keyword (exact term from JD), status ("present" if clearly in CV, "partial" if synonym/related found, "missing" if absent), frequency (exact count in CV, 0 if missing), importance: "critical", analysis: a 1-sentence contextual note (e.g. "Present in tools section but overshadowed by TypeScript — move Python earlier" or "Completely absent — critical gap for this role")
+- importantKeywords: 5-10 secondary keywords. Same schema, importance: "important", include analysis note for each
 - formattingChecks: ATS formatting checks. Cover: contact info completeness, use of action verbs, measurable achievements present, consistent date formats, bullet points usage, no keyword stuffing. status: "pass", "fail", or "warning", include a detail string
 - recommendations: 3-6 concrete actionable items. Each: section (e.g. "Summary", "Experience"), issue (the problem), before (snippet from CV), after (suggested rewrite)
 - summary: 1-2 sentence plain-text overview of the match quality
@@ -299,8 +299,8 @@ Return ONLY valid JSON, no markdown, no code blocks. Exact schema:
 {
   "overallScore": number,
   "estimatedNewScore": number,
-  "criticalKeywords": [{"keyword": string, "status": "present"|"missing"|"partial", "frequency": number, "importance": "critical"}],
-  "importantKeywords": [{"keyword": string, "status": "present"|"missing"|"partial", "frequency": number, "importance": "important"}],
+  "criticalKeywords": [{"keyword": string, "status": "present"|"missing"|"partial", "frequency": number, "importance": "critical", "analysis": string}],
+  "importantKeywords": [{"keyword": string, "status": "present"|"missing"|"partial", "frequency": number, "importance": "important", "analysis": string}],
   "formattingChecks": [{"label": string, "status": "pass"|"fail"|"warning", "detail": string}],
   "recommendations": [{"section": string, "issue": string, "before": string, "after": string}],
   "summary": string
@@ -330,7 +330,8 @@ const analyzeWithGemini = async (cvText: string, jobDescription: string): Promis
                                 keyword: { type: Type.STRING },
                                 status: { type: Type.STRING },
                                 frequency: { type: Type.NUMBER },
-                                importance: { type: Type.STRING }
+                                importance: { type: Type.STRING },
+                                analysis: { type: Type.STRING }
                             }
                         }
                     },
@@ -342,7 +343,8 @@ const analyzeWithGemini = async (cvText: string, jobDescription: string): Promis
                                 keyword: { type: Type.STRING },
                                 status: { type: Type.STRING },
                                 frequency: { type: Type.NUMBER },
-                                importance: { type: Type.STRING }
+                                importance: { type: Type.STRING },
+                                analysis: { type: Type.STRING }
                             }
                         }
                     },
