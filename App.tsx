@@ -3,6 +3,7 @@ import { INITIAL_CV_DATA } from './constants';
 import { CVData } from './types';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
+import ATSChecker from './components/ATSChecker';
 import AnalysisOverlay, { AnalysisStep } from './components/AnalysisOverlay';
 import { generateLatex, generateLatexWithPhoto } from './services/latexService';
 import { parseResumeFromPdf, AIProvider } from './services/aiService';
@@ -11,6 +12,7 @@ import { FileDown, X, UploadCloud, Loader2, Save, FolderOpen, Download } from 'l
 
 const App: React.FC = () => {
   const [cvData, setCvData] = useState<CVData>(INITIAL_CV_DATA);
+  const [activeTab, setActiveTab] = useState<'editor' | 'ats'>('editor');
   const [showLatex, setShowLatex] = useState(false);
   const [latexCode, setLatexCode] = useState('');
   const [analysisStep, setAnalysisStep] = useState<AnalysisStep>('idle');
@@ -306,8 +308,37 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden">
         {/* Editor Panel (Left) */}
-        <div className="w-full md:w-1/3 lg:w-1/4 min-w-[350px] border-r border-slate-200 bg-white h-full overflow-hidden">
-          <Editor data={cvData} onChange={setCvData} />
+        <div className="w-full md:w-1/3 lg:w-1/4 min-w-[350px] border-r border-slate-200 bg-white h-full overflow-hidden flex flex-col">
+          {/* Tabs */}
+          <div className="flex border-b border-slate-200 shrink-0">
+            <button
+              onClick={() => setActiveTab('editor')}
+              className={`flex-1 py-3 text-sm font-semibold transition-colors ${
+                activeTab === 'editor'
+                  ? 'text-indigo-600 border-b-2 border-indigo-600 bg-white'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              Éditeur
+            </button>
+            <button
+              onClick={() => setActiveTab('ats')}
+              className={`flex-1 py-3 text-sm font-semibold transition-colors ${
+                activeTab === 'ats'
+                  ? 'text-indigo-600 border-b-2 border-indigo-600 bg-white'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              ATS Checker
+            </button>
+          </div>
+          {/* Tab content */}
+          <div className="flex-1 overflow-hidden">
+            {activeTab === 'editor'
+              ? <Editor data={cvData} onChange={setCvData} />
+              : <ATSChecker cvData={cvData} aiProvider={aiProvider} />
+            }
+          </div>
         </div>
 
         {/* Preview Panel (Right) */}

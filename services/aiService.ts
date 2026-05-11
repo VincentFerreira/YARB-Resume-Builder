@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import Anthropic from "@anthropic-ai/sdk";
-import { CVData } from "../types";
+import { CVData, ATSAnalysisResult } from "../types";
 
 // Types pour le provider IA
 export type AIProvider = 'gemini' | 'claude';
@@ -237,6 +237,185 @@ const withTimeout = <T>(promise: Promise<T>): Promise<T> => {
     );
     return Promise.race([promise, timeout]);
 };
+
+// ─── ATS Analysis ────────────────────────────────────────────────────────────
+
+const serializeCVForATS = (data: CVData): string => {
+    const { personalInfo: p, skills, experience, education, languages } = data;
+    const lines: string[] = [];
+
+    lines.push('== PERSONAL INFO ==');
+    lines.push(`Name: ${p.firstName} ${p.lastName}`);
+    lines.push(`Title (FR): ${p.title.fr}`);
+    lines.push(`Title (EN): ${p.title.en}`);
+    lines.push(`Location: ${p.location}`);
+    lines.push(`Email: ${p.email}`);
+    if (p.linkedin) lines.push(`LinkedIn: ${p.linkedin}`);
+    if (p.github) lines.push(`GitHub: ${p.github}`);
+    lines.push(`Summary (EN): ${p.summary.en || p.summary.fr}`);
+    if (p.summary.fr && p.summary.fr !== p.summary.en) {
+        lines.push(`Summary (FR): ${p.summary.fr}`);
+    }
+
+    lines.push('\n== SKILLS ==');
+    for (const s of skills) {
+        lines.push(`[${s.name.en || s.name.fr}]: ${s.items.en || s.items.fr}`);
+    }
+
+    lines.push('\n== EXPERIENCE ==');
+    for (const e of experience) {
+        lines.push(`\n${e.role.en || e.role.fr} at ${e.company} (${e.location})`);
+        lines.push(`Period: ${e.startDate.en || e.startDate.fr} - ${e.endDate.en || e.endDate.fr}`);
+        if (e.techStack) lines.push(`Tech: ${e.techStack}`);
+        const bullets = e.description.en.length ? e.description.en : e.description.fr;
+        for (const b of bullets) lines.push(`  - ${b}`);
+    }
+
+    lines.push('\n== EDUCATION ==');
+    for (const edu of education) {
+        lines.push(`${edu.degree.en || edu.degree.fr} — ${edu.school} (${edu.startDate}–${edu.endDate})`);
+        if (edu.description.en) lines.push(`  ${edu.description.en}`);
+    }
+
+    lines.push('\n== LANGUAGES ==');
+    lines.push((languages.en.length ? languages.en : languages.fr).join(', '));
+
+    return lines.join('\n');
+};
+
+const ATS_ANALYZER_PROMPT = `You are an expert ATS (Applicant Tracking System) analyst and career coach.
+Analyze the CV against the job description and return a JSON object matching this exact schema.
+
+RULES:
+- overallScore: integer 0-100, current match between CV and job description
+- estimatedNewScore: integer 0-100, expected score after applying your recommendations
+- criticalKeywords: 5-10 non-negotiable keywords from the job (required skills, tools, certs). For each: keyword (exact term from JD), status ("present" if clearly in CV, "partial" if synonym/related found, "missing" if absent), frequency (exact count in CV, 0 if missing), importance: "critical"
+- importantKeywords: 5-10 secondary keywords. Same schema, importance: "important"
+- formattingChecks: ATS formatting checks. Cover: contact info completeness, use of action verbs, measurable achievements present, consistent date formats, bullet points usage, no keyword stuffing. status: "pass", "fail", or "warning", include a detail string
+- recommendations: 3-6 concrete actionable items. Each: section (e.g. "Summary", "Experience"), issue (the problem), before (snippet from CV), after (suggested rewrite)
+- summary: 1-2 sentence plain-text overview of the match quality
+
+Return ONLY valid JSON, no markdown, no code blocks. Exact schema:
+{
+  "overallScore": number,
+  "estimatedNewScore": number,
+  "criticalKeywords": [{"keyword": string, "status": "present"|"missing"|"partial", "frequency": number, "importance": "critical"}],
+  "importantKeywords": [{"keyword": string, "status": "present"|"missing"|"partial", "frequency": number, "importance": "important"}],
+  "formattingChecks": [{"label": string, "status": "pass"|"fail"|"warning", "detail": string}],
+  "recommendations": [{"section": string, "issue": string, "before": string, "after": string}],
+  "summary": string
+}`;
+
+const analyzeWithGemini = async (cvText: string, jobDescription: string): Promise<any> => {
+    const model = await getBestGeminiModel();
+    const response = await geminiAi.models.generateContent({
+        model,
+        contents: {
+            parts: [{
+                text: `${ATS_ANALYZER_PROMPT}\n\n== CV CONTENT ==\n${cvText}\n\n== JOB DESCRIPTION ==\n${jobDescription}`
+            }]
+        },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    overallScore: { type: Type.NUMBER },
+                    estimatedNewScore: { type: Type.NUMBER },
+                    criticalKeywords: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                keyword: { type: Type.STRING },
+                                status: { type: Type.STRING },
+                                frequency: { type: Type.NUMBER },
+                                importance: { type: Type.STRING }
+                            }
+                        }
+                    },
+                    importantKeywords: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                keyword: { type: Type.STRING },
+                                status: { type: Type.STRING },
+                                frequency: { type: Type.NUMBER },
+                                importance: { type: Type.STRING }
+                            }
+                        }
+                    },
+                    formattingChecks: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                label: { type: Type.STRING },
+                                status: { type: Type.STRING },
+                                detail: { type: Type.STRING }
+                            }
+                        }
+                    },
+                    recommendations: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                section: { type: Type.STRING },
+                                issue: { type: Type.STRING },
+                                before: { type: Type.STRING },
+                                after: { type: Type.STRING }
+                            }
+                        }
+                    },
+                    summary: { type: Type.STRING }
+                }
+            }
+        }
+    });
+    return JSON.parse(response.text);
+};
+
+const analyzeWithClaude = async (cvText: string, jobDescription: string): Promise<any> => {
+    const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 4000,
+        messages: [{
+            role: "user",
+            content: `${ATS_ANALYZER_PROMPT}\n\n== CV CONTENT ==\n${cvText}\n\n== JOB DESCRIPTION ==\n${jobDescription}`
+        }]
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+        throw new Error('No text response from Claude');
+    }
+
+    let jsonText = textContent.text.trim();
+    if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    return JSON.parse(jsonText);
+};
+
+export const analyzeATS = async (
+    cvData: CVData,
+    jobDescription: string,
+    provider: AIProvider = 'gemini'
+): Promise<ATSAnalysisResult> => {
+    const cvText = serializeCVForATS(cvData);
+    return withTimeout(
+        provider === 'claude'
+            ? analyzeWithClaude(cvText, jobDescription)
+            : analyzeWithGemini(cvText, jobDescription)
+    ) as Promise<ATSAnalysisResult>;
+};
+
+// ─── PDF Parsing ──────────────────────────────────────────────────────────────
 
 // Fonction principale avec sélection du provider
 export const parseResumeFromPdf = async (

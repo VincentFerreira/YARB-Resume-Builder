@@ -57,3 +57,33 @@ export interface EducationItem {
   description: MultiLangString;
 }
 
+export interface ATSKeyword {
+  keyword: string;
+  status: 'present' | 'missing' | 'partial';
+  frequency: number;
+  importance: 'critical' | 'important';
+}
+
+export interface ATSFormattingCheck {
+  label: string;
+  status: 'pass' | 'fail' | 'warning';
+  detail?: string;
+}
+
+export interface ATSRecommendation {
+  section: string;
+  issue: string;
+  before?: string;
+  after?: string;
+}
+
+export interface ATSAnalysisResult {
+  overallScore: number;
+  estimatedNewScore: number;
+  criticalKeywords: ATSKeyword[];
+  importantKeywords: ATSKeyword[];
+  formattingChecks: ATSFormattingCheck[];
+  recommendations: ATSRecommendation[];
+  summary: string;
+}
+
