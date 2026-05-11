@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   CheckCircle2, XCircle, AlertTriangle, Target,
-  Lightbulb, CheckSquare, RotateCcw, Loader2
+  Lightbulb, CheckSquare, RotateCcw, Loader2, ChevronDown, ChevronUp, TrendingUp
 } from 'lucide-react';
 import { CVData, ATSAnalysisResult, ATSKeyword, ATSFormattingCheck, ATSRecommendation } from '../types';
 import { analyzeATS, AIProvider } from '../services/aiService';
@@ -11,100 +11,126 @@ interface ATSCheckerProps {
   aiProvider: AIProvider;
 }
 
-const ScoreRing: React.FC<{ score: number; label: string; color: string }> = ({ score, label, color }) => (
-  <div className="flex flex-col items-center gap-1">
-    <div className={`text-4xl font-bold ${color}`}>{score}<span className="text-lg font-normal text-slate-400">/100</span></div>
-    <div className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</div>
-  </div>
-);
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 const KeywordBadge: React.FC<{ kw: ATSKeyword }> = ({ kw }) => {
-  const styles = {
-    present: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-    missing: 'bg-red-50 text-red-800 border-red-200',
-    partial: 'bg-amber-50 text-amber-800 border-amber-200',
+  const cfg = {
+    present: { bg: 'bg-emerald-100 border-emerald-300 text-emerald-900', icon: <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" /> },
+    missing:  { bg: 'bg-red-100 border-red-300 text-red-900',            icon: <XCircle className="w-3 h-3 text-red-500 shrink-0" /> },
+    partial:  { bg: 'bg-amber-100 border-amber-300 text-amber-900',      icon: <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" /> },
   };
-  const icons = {
-    present: <CheckCircle2 className="w-3 h-3 shrink-0" />,
-    missing: <XCircle className="w-3 h-3 shrink-0" />,
-    partial: <AlertTriangle className="w-3 h-3 shrink-0" />,
-  };
+  const { bg, icon } = cfg[kw.status] ?? cfg.missing;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-xs font-medium ${styles[kw.status]}`}>
-      {icons[kw.status]}
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${bg}`}>
+      {icon}
       {kw.keyword}
       {kw.status === 'present' && kw.frequency > 0 && (
-        <span className="ml-0.5 text-emerald-600 font-bold">×{kw.frequency}</span>
+        <span className="font-bold opacity-70">×{kw.frequency}</span>
       )}
     </span>
   );
 };
 
-const FormattingRow: React.FC<{ check: ATSFormattingCheck }> = ({ check }) => {
-  const iconMap = {
-    pass: <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />,
-    fail: <XCircle className="w-4 h-4 text-red-500 shrink-0" />,
-    warning: <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />,
+const SectionCard: React.FC<{
+  color: 'red' | 'amber' | 'slate' | 'violet';
+  icon: React.ReactNode;
+  title: string;
+  badge?: string;
+  children: React.ReactNode;
+}> = ({ color, icon, title, badge, children }) => {
+  const themes = {
+    red:    { header: 'bg-red-50 border-red-200',    border: 'border-red-200',    text: 'text-red-700',    badgeBg: 'bg-red-100 text-red-700' },
+    amber:  { header: 'bg-amber-50 border-amber-200',border: 'border-amber-200',  text: 'text-amber-700',  badgeBg: 'bg-amber-100 text-amber-700' },
+    slate:  { header: 'bg-slate-50 border-slate-200',border: 'border-slate-200',  text: 'text-slate-600',  badgeBg: 'bg-slate-200 text-slate-600' },
+    violet: { header: 'bg-violet-50 border-violet-200', border: 'border-violet-200', text: 'text-violet-700', badgeBg: 'bg-violet-100 text-violet-700' },
   };
+  const t = themes[color];
   return (
-    <div className="flex items-start gap-2 py-1.5">
-      {iconMap[check.status]}
-      <div>
-        <span className="text-sm font-medium text-slate-700">{check.label}</span>
-        {check.detail && <p className="text-xs text-slate-500 mt-0.5">{check.detail}</p>}
+    <div className={`rounded-xl border ${t.border} overflow-hidden`}>
+      <div className={`flex items-center justify-between px-3 py-2 ${t.header} border-b ${t.border}`}>
+        <div className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider ${t.text}`}>
+          {icon}
+          {title}
+        </div>
+        {badge && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${t.badgeBg}`}>{badge}</span>}
+      </div>
+      <div className="p-3 bg-white">{children}</div>
+    </div>
+  );
+};
+
+const FormattingRow: React.FC<{ check: ATSFormattingCheck }> = ({ check }) => {
+  const cfg = {
+    pass:    { icon: <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />, bg: 'bg-emerald-50', text: 'text-emerald-800' },
+    fail:    { icon: <XCircle className="w-4 h-4 text-red-500 shrink-0" />,          bg: 'bg-red-50',     text: 'text-red-800' },
+    warning: { icon: <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />,  bg: 'bg-amber-50',   text: 'text-amber-800' },
+  };
+  const { icon, bg, text } = cfg[check.status] ?? cfg.warning;
+  return (
+    <div className={`flex items-start gap-2 p-2 rounded-lg ${bg}`}>
+      {icon}
+      <div className="min-w-0">
+        <p className={`text-xs font-semibold ${text}`}>{check.label}</p>
+        {check.detail && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{check.detail}</p>}
       </div>
     </div>
   );
 };
 
-const RecommendationCard: React.FC<{ rec: ATSRecommendation; index: number }> = ({ rec, index }) => (
-  <details className="border border-slate-200 rounded-lg overflow-hidden group">
-    <summary className="flex items-start gap-2.5 p-3 cursor-pointer hover:bg-slate-50 transition-colors list-none">
-      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold shrink-0 mt-0.5">
-        {index + 1}
-      </span>
-      <div className="flex-1 min-w-0">
-        <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">{rec.section}</span>
-        <p className="text-sm text-slate-700 mt-0.5">{rec.issue}</p>
-      </div>
-    </summary>
-    {(rec.before || rec.after) && (
-      <div className="px-3 pb-3 space-y-2 border-t border-slate-100 pt-2">
-        {rec.before && (
-          <div>
-            <p className="text-xs font-semibold text-red-600 mb-1">Avant</p>
-            <p className="text-xs text-slate-600 bg-red-50 rounded p-2 italic">"{rec.before}"</p>
-          </div>
+const RecommendationCard: React.FC<{ rec: ATSRecommendation; index: number }> = ({ rec, index }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-violet-100 rounded-lg overflow-hidden bg-white">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-start gap-2.5 p-2.5 text-left hover:bg-violet-50 transition-colors"
+      >
+        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-600 text-white text-xs font-bold shrink-0 mt-0.5">
+          {index + 1}
+        </span>
+        <div className="flex-1 min-w-0">
+          <span className="text-xs font-bold text-violet-600 uppercase tracking-wide">{rec.section}</span>
+          <p className="text-xs text-slate-700 mt-0.5 leading-relaxed">{rec.issue}</p>
+        </div>
+        {(rec.before || rec.after) && (
+          open ? <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-1" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-1" />
         )}
-        {rec.after && (
-          <div>
-            <p className="text-xs font-semibold text-emerald-600 mb-1">Après</p>
-            <p className="text-xs text-slate-600 bg-emerald-50 rounded p-2 italic">"{rec.after}"</p>
-          </div>
-        )}
-      </div>
-    )}
-  </details>
-);
+      </button>
+      {open && (rec.before || rec.after) && (
+        <div className="px-3 pb-3 space-y-2 border-t border-violet-100">
+          {rec.before && (
+            <div className="mt-2">
+              <p className="text-xs font-bold text-red-500 mb-1 flex items-center gap-1"><XCircle className="w-3 h-3" /> Avant</p>
+              <p className="text-xs text-slate-600 bg-red-50 border border-red-100 rounded p-2 italic leading-relaxed">"{rec.before}"</p>
+            </div>
+          )}
+          {rec.after && (
+            <div>
+              <p className="text-xs font-bold text-emerald-600 mb-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Après</p>
+              <p className="text-xs text-slate-600 bg-emerald-50 border border-emerald-100 rounded p-2 italic leading-relaxed">"{rec.after}"</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
-const SectionHeader: React.FC<{ icon: React.ReactNode; title: string }> = ({ icon, title }) => (
-  <div className="flex items-center gap-2 mb-3">
-    <span className="text-indigo-600">{icon}</span>
-    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">{title}</h3>
-  </div>
-);
+// ── Main component ────────────────────────────────────────────────────────────
 
 const ATSChecker: React.FC<ATSCheckerProps> = ({ cvData, aiProvider }) => {
   const [jobDescription, setJobDescription] = useState('');
   const [result, setResult] = useState<ATSAnalysisResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
 
   const handleAnalyze = async () => {
     if (!jobDescription.trim()) return;
     setIsLoading(true);
     setError(null);
     setResult(null);
+    setSummaryExpanded(false);
     try {
       const res = await analyzeATS(cvData, jobDescription, aiProvider);
       setResult(res);
@@ -115,65 +141,69 @@ const ATSChecker: React.FC<ATSCheckerProps> = ({ cvData, aiProvider }) => {
     }
   };
 
-  const handleReset = () => {
-    setResult(null);
-    setError(null);
-  };
+  const handleReset = () => { setResult(null); setError(null); };
 
+  // ── Loading ──────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
-        <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+        <div className="relative">
+          <div className="w-16 h-16 rounded-full border-4 border-indigo-100 flex items-center justify-center">
+            <Target className="w-7 h-7 text-indigo-300" />
+          </div>
+          <Loader2 className="w-16 h-16 text-indigo-500 animate-spin absolute inset-0" />
+        </div>
         <div>
-          <p className="font-semibold text-slate-700">Analyse en cours...</p>
-          <p className="text-sm text-slate-500 mt-1">avec {aiProvider === 'claude' ? 'Claude' : 'Gemini'}</p>
+          <p className="font-semibold text-slate-700">Analyse ATS en cours...</p>
+          <p className="text-xs text-slate-400 mt-1">avec {aiProvider === 'claude' ? 'Claude' : 'Gemini'}</p>
         </div>
       </div>
     );
   }
 
+  // ── Error ────────────────────────────────────────────────────────────────
   if (error) {
     return (
       <div className="p-4 flex flex-col gap-3">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
           <div className="flex items-start gap-2">
             <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-red-800 text-sm">Erreur d'analyse</p>
-              <p className="text-xs text-red-600 mt-1">{error}</p>
+              <p className="text-xs text-red-500 mt-1 leading-relaxed">{error}</p>
             </div>
           </div>
         </div>
-        <button
-          onClick={handleReset}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-        >
-          <RotateCcw className="w-4 h-4" />
-          Réessayer
+        <button onClick={handleReset} className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+          <RotateCcw className="w-4 h-4" /> Réessayer
         </button>
       </div>
     );
   }
 
+  // ── Input form ───────────────────────────────────────────────────────────
   if (!result) {
     return (
-      <div className="flex flex-col h-full p-4 gap-4">
-        <div>
-          <h2 className="text-sm font-bold text-slate-800">ATS Resume Checker</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Collez une offre d'emploi pour analyser la compatibilité de votre CV avec les systèmes ATS.
-          </p>
+      <div className="flex flex-col h-full p-4 gap-3">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-indigo-100 rounded-lg">
+            <Target className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-800">ATS Resume Checker</h2>
+            <p className="text-xs text-slate-400">Analysez votre CV face à une offre d'emploi</p>
+          </div>
         </div>
         <textarea
-          className="flex-1 w-full border border-slate-200 rounded-lg p-3 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder-slate-400"
-          placeholder="Collez ici l'offre d'emploi..."
+          className="flex-1 w-full border border-slate-200 rounded-xl p-3 text-xs text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder-slate-300 leading-relaxed"
+          placeholder="Collez ici l'offre d'emploi complète..."
           value={jobDescription}
           onChange={e => setJobDescription(e.target.value)}
         />
         <button
           onClick={handleAnalyze}
           disabled={!jobDescription.trim()}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
         >
           <Target className="w-4 h-4" />
           Analyser avec {aiProvider === 'claude' ? 'Claude' : 'Gemini'}
@@ -182,83 +212,147 @@ const ATSChecker: React.FC<ATSCheckerProps> = ({ cvData, aiProvider }) => {
     );
   }
 
-  const scoreColor = result.overallScore >= 80 ? 'text-emerald-600' : result.overallScore >= 60 ? 'text-amber-600' : 'text-red-600';
-  const scoreBarColor = result.overallScore >= 80 ? 'bg-emerald-500' : result.overallScore >= 60 ? 'bg-amber-500' : 'bg-red-500';
+  // ── Results ──────────────────────────────────────────────────────────────
+  const scoreColor = result.overallScore >= 80 ? 'text-emerald-600' : result.overallScore >= 60 ? 'text-amber-500' : 'text-red-500';
+  const scoreBarColor = result.overallScore >= 80 ? 'bg-emerald-500' : result.overallScore >= 60 ? 'bg-amber-400' : 'bg-red-500';
+  const scoreBg = result.overallScore >= 80 ? 'from-emerald-50' : result.overallScore >= 60 ? 'from-amber-50' : 'from-red-50';
+
+  const criticals = result.criticalKeywords ?? [];
+  const importants = result.importantKeywords ?? [];
+  const formatting = result.formattingChecks ?? [];
+  const recommendations = result.recommendations ?? [];
+
+  const missingCritical = criticals.filter(k => k.status === 'missing').length;
+  const missingImportant = importants.filter(k => k.status === 'missing').length;
+  const failedFormatting = formatting.filter(c => c.status === 'fail').length;
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
-      {/* Score header */}
-      <div className="bg-gradient-to-br from-indigo-50 to-slate-50 border-b border-slate-200 p-4">
+    <div className="flex flex-col h-full overflow-y-auto bg-slate-50">
+
+      {/* ── Score banner ─────────────────────────────────────────────────── */}
+      <div className={`bg-gradient-to-b ${scoreBg} to-white border-b border-slate-200 p-4`}>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5">
             <Target className="w-4 h-4 text-indigo-600" />
-            Score ATS
-          </h2>
-          <button
-            onClick={handleReset}
-            className="flex items-center gap-1 text-xs text-slate-500 hover:text-indigo-600 transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Nouvelle analyse
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Score ATS</span>
+          </div>
+          <button onClick={handleReset} className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-600 transition-colors">
+            <RotateCcw className="w-3 h-3" /> Nouvelle analyse
           </button>
         </div>
-        <div className="flex items-center justify-around">
-          <ScoreRing score={result.overallScore} label="Score actuel" color={scoreColor} />
-          <div className="text-slate-300 text-2xl">→</div>
-          <ScoreRing score={result.estimatedNewScore} label="Après corrections" color="text-emerald-600" />
+
+        {/* Scores */}
+        <div className="flex items-end gap-3 mb-3">
+          <div>
+            <span className={`text-5xl font-black ${scoreColor} leading-none`}>{result.overallScore}</span>
+            <span className="text-slate-400 text-sm">/100</span>
+          </div>
+          <div className="flex items-center gap-1.5 mb-1 text-slate-400">
+            <TrendingUp className="w-4 h-4 text-emerald-500" />
+            <span className="text-xs">après corrections :</span>
+            <span className="text-lg font-bold text-emerald-600">{result.estimatedNewScore}</span>
+            <span className="text-xs text-slate-400">/100</span>
+          </div>
         </div>
-        {/* Progress bar */}
-        <div className="mt-3 h-2 bg-slate-200 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${scoreBarColor}`}
-            style={{ width: `${result.overallScore}%` }}
-          />
+
+        {/* Progress bar double */}
+        <div className="relative h-2.5 bg-slate-200 rounded-full overflow-hidden mb-3">
+          <div className="absolute inset-y-0 left-0 bg-emerald-200 rounded-full transition-all"
+            style={{ width: `${result.estimatedNewScore}%` }} />
+          <div className={`absolute inset-y-0 left-0 rounded-full transition-all ${scoreBarColor}`}
+            style={{ width: `${result.overallScore}%` }} />
         </div>
-        <p className="text-xs text-slate-500 mt-2 italic">{result.summary}</p>
+
+        {/* Quick stats */}
+        <div className="flex gap-2 mb-3">
+          {missingCritical > 0 && (
+            <span className="flex items-center gap-1 text-xs bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full font-medium">
+              <XCircle className="w-3 h-3" />{missingCritical} mots-clés critiques manquants
+            </span>
+          )}
+          {failedFormatting > 0 && (
+            <span className="flex items-center gap-1 text-xs bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+              <AlertTriangle className="w-3 h-3" />{failedFormatting} problème{failedFormatting > 1 ? 's' : ''} formatage
+            </span>
+          )}
+        </div>
+
+        {/* Summary — truncated */}
+        {result.summary && (
+          <div className="bg-white border border-slate-200 rounded-lg p-2.5">
+            <p className={`text-xs text-slate-600 leading-relaxed ${!summaryExpanded ? 'line-clamp-2' : ''}`}>
+              {result.summary}
+            </p>
+            {result.summary.length > 120 && (
+              <button onClick={() => setSummaryExpanded(e => !e)} className="text-xs text-indigo-500 hover:text-indigo-700 mt-1 font-medium">
+                {summaryExpanded ? 'Voir moins ↑' : 'Voir plus ↓'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="p-4 space-y-5">
+      {/* ── Sections ─────────────────────────────────────────────────────── */}
+      <div className="p-3 space-y-3">
+
         {/* Critical keywords */}
-        {result.criticalKeywords.length > 0 && (
-          <div>
-            <SectionHeader icon={<XCircle className="w-4 h-4" />} title="Mots-clés critiques" />
+        {criticals.length > 0 && (
+          <SectionCard
+            color="red"
+            icon={<XCircle className="w-3.5 h-3.5" />}
+            title="Mots-clés critiques"
+            badge={`${criticals.filter(k => k.status === 'present').length}/${criticals.length} trouvés`}
+          >
             <div className="flex flex-wrap gap-1.5">
-              {result.criticalKeywords.map((kw, i) => <KeywordBadge key={i} kw={kw} />)}
+              {criticals.map((kw, i) => <KeywordBadge key={i} kw={kw} />)}
             </div>
-          </div>
+          </SectionCard>
         )}
 
         {/* Important keywords */}
-        {result.importantKeywords.length > 0 && (
-          <div>
-            <SectionHeader icon={<AlertTriangle className="w-4 h-4" />} title="Mots-clés importants" />
+        {importants.length > 0 && (
+          <SectionCard
+            color="amber"
+            icon={<AlertTriangle className="w-3.5 h-3.5" />}
+            title="Mots-clés importants"
+            badge={`${importants.filter(k => k.status === 'present').length}/${importants.length} trouvés`}
+          >
             <div className="flex flex-wrap gap-1.5">
-              {result.importantKeywords.map((kw, i) => <KeywordBadge key={i} kw={kw} />)}
+              {importants.map((kw, i) => <KeywordBadge key={i} kw={kw} />)}
             </div>
-          </div>
+          </SectionCard>
         )}
 
-        {/* Formatting checks */}
-        {result.formattingChecks.length > 0 && (
-          <div>
-            <SectionHeader icon={<CheckSquare className="w-4 h-4" />} title="Vérifications formatage" />
-            <div className="divide-y divide-slate-100">
-              {result.formattingChecks.map((check, i) => <FormattingRow key={i} check={check} />)}
+        {/* Formatting */}
+        {formatting.length > 0 && (
+          <SectionCard
+            color="slate"
+            icon={<CheckSquare className="w-3.5 h-3.5" />}
+            title="Vérifications formatage"
+            badge={`${formatting.filter(c => c.status === 'pass').length}/${formatting.length} OK`}
+          >
+            <div className="space-y-1.5">
+              {formatting.map((c, i) => <FormattingRow key={i} check={c} />)}
             </div>
-          </div>
+          </SectionCard>
         )}
 
         {/* Recommendations */}
-        {result.recommendations.length > 0 && (
-          <div>
-            <SectionHeader icon={<Lightbulb className="w-4 h-4" />} title="Recommandations" />
+        {recommendations.length > 0 && (
+          <SectionCard
+            color="violet"
+            icon={<Lightbulb className="w-3.5 h-3.5" />}
+            title="Recommandations"
+            badge={`${recommendations.length}`}
+          >
             <div className="space-y-2">
-              {result.recommendations.map((rec, i) => (
+              {recommendations.map((rec, i) => (
                 <RecommendationCard key={i} rec={rec} index={i} />
               ))}
             </div>
-          </div>
+          </SectionCard>
         )}
+
       </div>
     </div>
   );
