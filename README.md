@@ -1,20 +1,94 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# LaTeX CV Builder
 
-# Run and deploy your AI Studio app
+A web app to build, edit, and export professional resumes as PDF — powered by a LaTeX template and AI extraction.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/10YPddxYB8GMg4LR1H51gin7OKqkibm5A
+- **Visual editor** with real-time preview — no LaTeX knowledge required
+- **Bilingual** (FR / EN) — switch language with one click, all fields are translated independently
+- **AI import** — drop an existing PDF resume and let Gemini or Claude extract all the data
+- **PDF export** — compiles the LaTeX template locally via `pdflatex`
+- **LaTeX export** — copy the raw `.tex` source to use in Overleaf or any LaTeX editor
+- **JSON save / load** — persist your CV data as a portable JSON file
+- **Photo support** — include a profile picture in the generated PDF
 
-## Run Locally
+## Tech stack
 
-**Prerequisites:**  Node.js
+| Layer | Tools |
+|---|---|
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS |
+| AI extraction | Google Gemini (`@google/genai`), Anthropic Claude (`@anthropic-ai/sdk`) |
+| PDF compilation | Express server → `pdflatex` |
 
+## Prerequisites
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- **Node.js** ≥ 18
+- **LaTeX distribution** with `pdflatex` (e.g. [MacTeX](https://www.tug.org/mactex/), [TeX Live](https://tug.org/texlive/))  
+  The server expects `pdflatex` at `/Library/TeX/texbin/pdflatex` (macOS default). Edit `server.js` for other paths.
+- An **API key** for at least one AI provider:
+  - [Google AI Studio](https://aistudio.google.com/app/apikey) → Gemini
+  - [Anthropic Console](https://console.anthropic.com/) → Claude
+
+## Getting started
+
+```bash
+# 1. Clone
+git clone https://github.com/your-username/latex-cv-builder.git
+cd latex-cv-builder
+
+# 2. Install dependencies
+npm install
+
+# 3. Configure API keys
+cp .env.local.example .env.local
+# Edit .env.local and fill in your keys
+
+# 4. Start both servers
+npm run server   # LaTeX compilation server on :3001
+npm run dev      # Vite dev server on :3000
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## Environment variables
+
+Create a `.env.local` file at the root (already gitignored):
+
+```env
+GEMINI_API_KEY=your_gemini_api_key
+ANTHROPIC_API_KEY=your_anthropic_api_key
+```
+
+Both keys are optional — you only need the one(s) for the AI provider(s) you want to use.
+
+## Usage
+
+1. **Fill in** your details in the left panel (personal info, skills, experience, education)
+2. **Switch language** with FR / EN buttons to edit the translated version
+3. **Import** an existing PDF resume to auto-fill all fields via AI
+4. **Download PDF** to compile and save the result
+5. **Export LaTeX** to get the raw `.tex` source for further customization
+
+## Project structure
+
+```
+├── App.tsx                  # Root component, toolbar actions
+├── components/
+│   ├── Editor.tsx           # Left panel — form editor
+│   └── Preview.tsx          # Right panel — live preview
+├── services/
+│   ├── aiService.ts         # Gemini + Claude PDF extraction
+│   ├── latexService.ts      # LaTeX template generation
+│   └── pdfService.ts        # PDF download via compilation server
+├── server.js                # Express server — runs pdflatex
+├── types.ts                 # TypeScript interfaces (CVData, etc.)
+└── constants.ts             # Default CV data
+```
+
+## Contributing
+
+Pull requests are welcome. For larger changes, open an issue first to discuss what you'd like to change.
+
+## License
+
+[MIT](LICENSE)

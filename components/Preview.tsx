@@ -7,7 +7,26 @@ interface PreviewProps {
 }
 
 const Preview: React.FC<PreviewProps> = ({ data }) => {
-  const { personalInfo, skills, experience, education } = data;
+  const { personalInfo, skills, experience, education, languages, currentLanguage: lang } = data;
+
+  const headers = {
+    fr: {
+      skills: "COMPÉTENCES",
+      experience: "EXPÉRIENCE PROFESSIONNELLE",
+      education: "FORMATION",
+      languages: "LANGUES",
+      tech: "Tech :"
+    },
+    en: {
+      skills: "SKILLS",
+      experience: "PROFESSIONAL EXPERIENCE",
+      education: "EDUCATION",
+      languages: "LANGUES",
+      tech: "Tech:"
+    }
+  };
+
+  const h = headers[lang];
 
   return (
     <div className="bg-white shadow-2xl w-full max-w-[21cm] min-h-[29.7cm] p-8 md:p-10 mx-auto text-slate-800 font-sans leading-relaxed origin-top scale-[0.6] sm:scale-[0.7] md:scale-[0.8] lg:scale-100 transition-transform duration-300">
@@ -26,7 +45,7 @@ const Preview: React.FC<PreviewProps> = ({ data }) => {
               />
             ) : (
               <div className="w-full h-full bg-slate-200 flex items-center justify-center text-slate-400">
-                No Photo
+                {lang === 'fr' ? 'Pas de photo' : 'No Photo'}
               </div>
             )}
           </div>
@@ -38,7 +57,7 @@ const Preview: React.FC<PreviewProps> = ({ data }) => {
             {personalInfo.firstName} <span className="text-slate-900">{personalInfo.lastName}</span>
           </h1>
           <h2 className="text-xl text-indigo-600 font-medium mt-1 mb-3">
-            {personalInfo.title}
+            {personalInfo.title[lang]}
           </h2>
 
           <div className="text-sm text-slate-600 space-y-1">
@@ -72,23 +91,23 @@ const Preview: React.FC<PreviewProps> = ({ data }) => {
       </div>
 
       {/* SUMMARY */}
-      <div className="mb-8 text-sm text-slate-600 text-justify">
-        {personalInfo.summary}
+      <div className="mb-8 text-sm text-slate-600 text-justify whitespace-pre-line">
+        {personalInfo.summary[lang]}
       </div>
 
       {/* SKILLS */}
       <div className="mb-8">
         <h3 className="text-xl font-bold text-indigo-800 border-b-2 border-indigo-800 mb-4 flex items-center gap-2">
-          <span className="text-2xl">≡</span> COMPÉTENCES
+          <span className="text-2xl">≡</span> {h.skills}
         </h3>
         <div className="space-y-2">
           {skills.map((skill) => (
             <div key={skill.id} className="flex flex-col sm:flex-row text-sm">
               <div className="w-full sm:w-40 font-bold text-slate-800 text-right pr-4 mb-1 sm:mb-0">
-                {skill.name}
+                {skill.name[lang]}
               </div>
               <div className="flex-1 text-slate-600">
-                {skill.items}
+                {skill.items[lang]}
               </div>
             </div>
           ))}
@@ -98,26 +117,27 @@ const Preview: React.FC<PreviewProps> = ({ data }) => {
       {/* EXPERIENCE */}
       <div className="mb-8">
         <h3 className="text-xl font-bold text-indigo-800 border-b-2 border-indigo-800 mb-4 flex items-center gap-2">
-          <span className="text-2xl">💼</span> EXPÉRIENCE PROFESSIONNELLE
+          <span className="text-2xl">💼</span> {h.experience}
         </h3>
         <div className="space-y-6">
           {experience.map((exp) => (
             <div key={exp.id} className="flex flex-col sm:flex-row">
               <div className="w-full sm:w-40 flex flex-col items-end pr-4 mb-2 sm:mb-0">
-                <span className="font-bold text-slate-800 text-sm">{exp.startDate}</span>
-                <span className="text-xs text-slate-500">{exp.endDate}</span>
+                <span className="font-bold text-slate-800 text-sm">{exp.startDate[lang]}</span>
+                <span className="text-xs text-slate-500">{exp.endDate[lang]}</span>
               </div>
               <div className="flex-1 border-l-2 border-slate-200 pl-4 pb-2">
                 <div className="font-bold text-base text-slate-800">
-                  {exp.role} | <span className="text-slate-600 font-medium">{exp.company}, {exp.location}</span>
+                  {exp.role[lang]} | <span className="text-slate-600 font-medium">{exp.company}, {exp.location}</span>
                 </div>
                 <ul className="list-disc list-outside ml-4 mt-2 text-sm text-slate-600 space-y-1">
-                  {exp.description.map((desc, idx) => (
+                  {exp.description[lang].map((desc, idx) => (
                     <li key={idx}>{desc}</li>
                   ))}
                 </ul>
                 {exp.techStack && (
                   <div className="mt-2 flex flex-wrap gap-1">
+                    <span className="text-xs text-slate-400 self-center mr-1">{h.tech}</span>
                     {exp.techStack.split(',').map((tech, idx) => (
                       <span key={idx} className="px-2 py-0.5 bg-slate-100 border border-slate-300 text-slate-600 text-xs rounded-full">
                         {tech.trim()}
@@ -134,7 +154,7 @@ const Preview: React.FC<PreviewProps> = ({ data }) => {
       {/* EDUCATION */}
       <div className="mb-8">
         <h3 className="text-xl font-bold text-indigo-800 border-b-2 border-indigo-800 mb-4 flex items-center gap-2">
-          <span className="text-2xl">🎓</span> FORMATION
+          <span className="text-2xl">🎓</span> {h.education}
         </h3>
         <div className="space-y-4">
           {education.map((edu) => (
@@ -145,13 +165,13 @@ const Preview: React.FC<PreviewProps> = ({ data }) => {
               </div>
               <div className="flex-1 border-l-2 border-slate-200 pl-4">
                 <div className="font-bold text-base text-slate-800">
-                  {edu.degree}
+                  {edu.degree[lang]}
                 </div>
                 <div className="text-sm text-slate-600 italic mb-1">
                   {edu.school}, {edu.location}
                 </div>
                 <div className="text-sm text-slate-500">
-                  {edu.description}
+                  {edu.description[lang]}
                 </div>
               </div>
             </div>
@@ -159,9 +179,21 @@ const Preview: React.FC<PreviewProps> = ({ data }) => {
         </div>
       </div>
 
+      {/* LANGUAGES */}
+      <div className="mb-8">
+        <h3 className="text-xl font-bold text-indigo-800 border-b-2 border-indigo-800 mb-4 flex items-center gap-2">
+          <span className="text-2xl">🌐</span> {h.languages}
+        </h3>
+        <ul className="list-disc list-outside ml-4 mt-2 text-sm text-slate-600 space-y-1">
+          {languages[lang].map((l, idx) => (
+            <li key={idx}>{l}</li>
+          ))}
+        </ul>
+      </div>
+
       {/* FOOTER */}
       <div className="mt-auto pt-8 flex justify-between text-xs text-slate-400 border-t border-slate-100">
-        <span>{new Date().toLocaleDateString()}</span>
+        <span>{new Date().toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')}</span>
         <span>{personalInfo.firstName} {personalInfo.lastName} - CV</span>
         <span>1/1</span>
       </div>
@@ -171,3 +203,4 @@ const Preview: React.FC<PreviewProps> = ({ data }) => {
 };
 
 export default Preview;
+

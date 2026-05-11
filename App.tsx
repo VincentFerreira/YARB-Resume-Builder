@@ -3,6 +3,7 @@ import { INITIAL_CV_DATA } from './constants';
 import { CVData } from './types';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
+import AnalysisOverlay, { AnalysisStep } from './components/AnalysisOverlay';
 import { generateLatex, generateLatexWithPhoto } from './services/latexService';
 import { parseResumeFromPdf, AIProvider } from './services/aiService';
 import { compileToPdf, downloadBlob } from './services/pdfService';
@@ -12,11 +13,15 @@ const App: React.FC = () => {
   const [cvData, setCvData] = useState<CVData>(INITIAL_CV_DATA);
   const [showLatex, setShowLatex] = useState(false);
   const [latexCode, setLatexCode] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisStep, setAnalysisStep] = useState<AnalysisStep>('idle');
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
+
+  const isAnalyzing = analysisStep !== 'idle' && analysisStep !== 'done' && analysisStep !== 'error';
+  const isOverlayVisible = analysisStep !== 'idle';
 
   // Sauvegarder le CV en JSON
   const handleSaveJson = () => {
@@ -50,14 +55,56 @@ const App: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const jsonData = JSON.parse(e.target?.result as string) as CVData;
-        // Validation basique de la structure
-        if (jsonData.personalInfo && jsonData.skills && jsonData.experience && jsonData.education) {
-          setCvData(jsonData);
-          alert('CV chargé avec succès !');
-        } else {
+        const jsonData = JSON.parse(e.target?.result as string);
+
+        // Basic validation
+        if (!jsonData.personalInfo || !jsonData.skills || !jsonData.experience || !jsonData.education) {
           alert('Le fichier JSON ne contient pas une structure de CV valide.');
+          return;
         }
+
+        // Migration: convert old format to new format if needed
+        const migratedData: any = { ...jsonData };
+        if (!migratedData.currentLanguage) migratedData.currentLanguage = 'fr';
+
+        const toBilingual = (val: any) => typeof val === 'string' ? { fr: val, en: val } : val;
+        const toBilingualArray = (val: any) => Array.isArray(val) ? { fr: val, en: val } : val;
+
+        if (typeof migratedData.personalInfo.title === 'string') {
+          migratedData.personalInfo.title = toBilingual(migratedData.personalInfo.title);
+        }
+        if (typeof migratedData.personalInfo.summary === 'string') {
+          migratedData.personalInfo.summary = toBilingual(migratedData.personalInfo.summary);
+        }
+
+        migratedData.skills = migratedData.skills.map((s: any) => ({
+          ...s,
+          name: toBilingual(s.name),
+          items: toBilingual(s.items)
+        }));
+
+        migratedData.experience = migratedData.experience.map((exp: any) => ({
+          ...exp,
+          role: toBilingual(exp.role),
+          startDate: toBilingual(exp.startDate),
+          endDate: toBilingual(exp.endDate),
+          description: toBilingualArray(exp.description)
+        }));
+
+        migratedData.education = migratedData.education.map((edu: any) => ({
+          ...edu,
+          degree: toBilingual(edu.degree),
+          description: toBilingual(edu.description)
+        }));
+
+        if (Array.isArray(migratedData.languages)) {
+          migratedData.languages = toBilingualArray(migratedData.languages);
+        } else if (!migratedData.languages) {
+          migratedData.languages = { fr: [], en: [] };
+        }
+
+        setCvData(migratedData as CVData);
+        alert('CV chargé avec succès !');
       } catch (error) {
         console.error('Error parsing JSON:', error);
         alert('Erreur lors de la lecture du fichier JSON.');
@@ -92,9 +139,11 @@ const App: React.FC = () => {
     }
   };
 
+  const [copied, setCopied] = useState(false);
   const copyToClipboard = () => {
     navigator.clipboard.writeText(latexCode);
-    alert('Code LaTeX copié dans le presse-papier !');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleImportClick = () => {
@@ -105,65 +154,79 @@ const App: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
     if (file.type !== 'application/pdf') {
-      alert('Veuillez sélectionner un fichier PDF.');
+      setAnalysisError('Le fichier sélectionné n\'est pas un PDF.');
+      setAnalysisStep('error');
       return;
     }
 
-    setIsAnalyzing(true);
-    try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64 = e.target?.result as string;
-        if (base64) {
-          try {
-            const extractedData = await parseResumeFromPdf(base64, aiProvider);
-            // Preserve the existing photo if new one is null (since extraction returns null for photo)
-            // Or just reset it. Let's reset it but maybe keep a placeholder if user wants.
-            // Actually, best to just use the extracted data.
-            setCvData(prev => ({
-              ...extractedData,
-              personalInfo: {
-                ...extractedData.personalInfo,
-                photo: prev.personalInfo.photo // Keep previous photo or default if extraction can't get it
-              }
-            }));
-          } catch (error) {
-            console.error("Error parsing PDF:", error);
-            alert(`Erreur lors de l'analyse du CV via ${aiProvider === 'claude' ? 'Claude' : 'Gemini'}. Vérifiez votre clé API.`);
-          } finally {
-            setIsAnalyzing(false);
-          }
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (error) {
-      console.error("File reading error:", error);
-      setIsAnalyzing(false);
-    }
+    setAnalysisError(null);
+    setAnalysisStep('reading');
 
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target?.result as string;
+      if (!base64) return;
+      try {
+        const extractedData = await parseResumeFromPdf(base64, aiProvider, (step) => {
+          setAnalysisStep(step);
+        });
+        setCvData(prev => ({
+          ...extractedData,
+          personalInfo: { ...extractedData.personalInfo, photo: prev.personalInfo.photo }
+        }));
+        setAnalysisStep('done');
+      } catch (error) {
+        console.error('Error parsing PDF:', error);
+        setAnalysisError(error instanceof Error ? error.message : String(error));
+        setAnalysisStep('error');
+      }
+    };
+    reader.onerror = () => {
+      setAnalysisError('Impossible de lire le fichier. Vérifiez qu\'il n\'est pas corrompu.');
+      setAnalysisStep('error');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDismissAnalysis = () => {
+    setAnalysisStep('idle');
+    setAnalysisError(null);
   };
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col h-screen overflow-hidden relative">
-      {/* Loading Overlay */}
-      {isAnalyzing && (
-        <div className="absolute inset-0 bg-black/50 z-[60] flex flex-col items-center justify-center backdrop-blur-sm text-white">
-          <Loader2 className="w-12 h-12 animate-spin mb-4" />
-          <p className="text-xl font-semibold">Analyse du CV en cours...</p>
-          <p className="text-sm text-slate-200 mt-2">L'IA de Gemini lit votre PDF.</p>
-        </div>
-      )}
+      <AnalysisOverlay
+        step={analysisStep}
+        provider={aiProvider}
+        error={analysisError}
+        timeoutSeconds={60}
+        onDismiss={handleDismissAnalysis}
+      />
 
       {/* Navbar */}
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center z-10 shrink-0">
-        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-          <span className="bg-indigo-600 text-white p-1 rounded">CV</span> Builder
-        </h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <span className="bg-indigo-600 text-white p-1 rounded">CV</span> Builder
+          </h1>
+          <div className="flex bg-slate-100 rounded p-1 gap-1">
+            <button
+              onClick={() => setCvData(prev => ({ ...prev, currentLanguage: 'fr' }))}
+              className={`px-3 py-1 text-sm rounded transition-colors ${cvData.currentLanguage === 'fr' ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-500 hover:bg-slate-200'}`}
+            >
+              FR
+            </button>
+            <button
+              onClick={() => setCvData(prev => ({ ...prev, currentLanguage: 'en' }))}
+              className={`px-3 py-1 text-sm rounded transition-colors ${cvData.currentLanguage === 'en' ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-500 hover:bg-slate-200'}`}
+            >
+              EN
+            </button>
+          </div>
+        </div>
 
         <div className="flex gap-3">
           <input
@@ -183,7 +246,7 @@ const App: React.FC = () => {
           <button
             onClick={handleLoadJsonClick}
             className="flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded hover:bg-emerald-100 transition-colors"
-            disabled={isAnalyzing}
+            disabled={isOverlayVisible}
             title="Charger un CV sauvegardé"
           >
             <FolderOpen className="w-4 h-4" />
@@ -192,7 +255,7 @@ const App: React.FC = () => {
           <button
             onClick={handleSaveJson}
             className="flex items-center gap-2 bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded hover:bg-amber-100 transition-colors"
-            disabled={isAnalyzing}
+            disabled={isOverlayVisible}
             title="Sauvegarder le CV en JSON"
           >
             <Save className="w-4 h-4" />
@@ -202,7 +265,7 @@ const App: React.FC = () => {
             value={aiProvider}
             onChange={(e) => setAiProvider(e.target.value as AIProvider)}
             className="bg-slate-50 text-slate-700 border border-slate-200 px-3 py-2 rounded hover:bg-slate-100 transition-colors cursor-pointer"
-            disabled={isAnalyzing}
+            disabled={isOverlayVisible}
             title="Choisir le modèle IA"
           >
             <option value="gemini">🤖 Gemini</option>
@@ -211,7 +274,7 @@ const App: React.FC = () => {
           <button
             onClick={handleImportClick}
             className="flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded hover:bg-indigo-100 transition-colors"
-            disabled={isAnalyzing}
+            disabled={isOverlayVisible}
           >
             <UploadCloud className="w-4 h-4" />
             Importer PDF
@@ -219,7 +282,7 @@ const App: React.FC = () => {
           <button
             onClick={handleDownloadPdf}
             className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 transition-colors"
-            disabled={isAnalyzing || isGeneratingPdf}
+            disabled={isOverlayVisible || isGeneratingPdf}
           >
             {isGeneratingPdf ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -231,13 +294,14 @@ const App: React.FC = () => {
           <button
             onClick={handleGenerateLatex}
             className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 transition-colors"
-            disabled={isAnalyzing || isGeneratingPdf}
+            disabled={isOverlayVisible || isGeneratingPdf}
           >
             <FileDown className="w-4 h-4" />
             Exporter en LaTeX
           </button>
         </div>
       </header>
+
 
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden">
@@ -276,8 +340,8 @@ const App: React.FC = () => {
               <button onClick={() => setShowLatex(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">
                 Fermer
               </button>
-              <button onClick={copyToClipboard} className="px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded font-medium">
-                Copier le code
+              <button onClick={copyToClipboard} className={`px-4 py-2 rounded font-medium transition-colors ${copied ? 'bg-green-600 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                {copied ? '✓ Copié !' : 'Copier le code'}
               </button>
             </div>
           </div>
