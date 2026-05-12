@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { INITIAL_CV_DATA } from './constants';
 import { CVData } from './types';
+import { LANGUAGES, createMultiLangString, createMultiLangArray } from './lib/i18n';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
 import ATSChecker from './components/ATSChecker';
@@ -69,8 +70,8 @@ const App: React.FC = () => {
         const migratedData: any = { ...jsonData };
         if (!migratedData.currentLanguage) migratedData.currentLanguage = 'fr';
 
-        const toBilingual = (val: any) => typeof val === 'string' ? { fr: val, en: val } : val;
-        const toBilingualArray = (val: any) => Array.isArray(val) ? { fr: val, en: val } : val;
+        const toBilingual = (val: any) => typeof val === 'string' ? createMultiLangString({ fr: val, en: val }) : val;
+        const toBilingualArray = (val: any) => Array.isArray(val) ? createMultiLangArray({ fr: val, en: val }) : val;
 
         if (typeof migratedData.personalInfo.title === 'string') {
           migratedData.personalInfo.title = toBilingual(migratedData.personalInfo.title);
@@ -215,18 +216,15 @@ const App: React.FC = () => {
             <span className="bg-indigo-600 text-white p-1 rounded">CV</span> Builder
           </h1>
           <div className="flex bg-slate-100 rounded p-1 gap-1">
-            <button
-              onClick={() => setCvData(prev => ({ ...prev, currentLanguage: 'fr' }))}
-              className={`px-3 py-1 text-sm rounded transition-colors ${cvData.currentLanguage === 'fr' ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-500 hover:bg-slate-200'}`}
-            >
-              FR
-            </button>
-            <button
-              onClick={() => setCvData(prev => ({ ...prev, currentLanguage: 'en' }))}
-              className={`px-3 py-1 text-sm rounded transition-colors ${cvData.currentLanguage === 'en' ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-500 hover:bg-slate-200'}`}
-            >
-              EN
-            </button>
+            {LANGUAGES.map(({ code, label }) => (
+              <button
+                key={code}
+                onClick={() => setCvData(prev => ({ ...prev, currentLanguage: code }))}
+                className={`px-3 py-1 text-sm rounded transition-colors ${cvData.currentLanguage === code ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-500 hover:bg-slate-200'}`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 

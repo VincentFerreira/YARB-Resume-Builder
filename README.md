@@ -33,7 +33,7 @@ A web app to build, edit, and export professional resumes as PDF — powered by 
 
 ```bash
 # 1. Clone
-git clone https://github.com/your-username/latex-cv-builder.git
+git clone https://github.com/vincentferreira/latex-cv-builder.git
 cd latex-cv-builder
 
 # 2. Install dependencies

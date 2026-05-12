@@ -1,14 +1,9 @@
-export type Language = 'fr' | 'en';
+export type { Language } from './lib/i18n';
 
-export interface MultiLangString {
-  fr: string;
-  en: string;
-}
+import type { Language } from './lib/i18n';
 
-export interface MultiLangStringArray {
-  fr: string[];
-  en: string[];
-}
+export type MultiLangString = Partial<Record<Language, string>>;
+export type MultiLangStringArray = Partial<Record<Language, string[]>>;
 
 export interface CVData {
   currentLanguage: Language;
@@ -21,7 +16,7 @@ export interface CVData {
     location: string;
     linkedin: string;
     github: string;
-    photo: string | null; // Base64 data URL for preview
+    photo: string | null;
     summary: MultiLangString;
   };
   skills: SkillCategory[];
@@ -33,7 +28,7 @@ export interface CVData {
 export interface SkillCategory {
   id: string;
   name: MultiLangString;
-  items: MultiLangString; // Comma separated string for easier editing
+  items: MultiLangString;
 }
 
 export interface ExperienceItem {
@@ -43,8 +38,8 @@ export interface ExperienceItem {
   location: string;
   startDate: MultiLangString;
   endDate: MultiLangString;
-  description: MultiLangStringArray; // Bullet points
-  techStack: string; // Comma separated tags
+  description: MultiLangStringArray;
+  techStack: string;
 }
 
 export interface EducationItem {
@@ -62,7 +57,7 @@ export interface ATSKeyword {
   status: 'present' | 'missing' | 'partial';
   frequency: number;
   importance: 'critical' | 'important';
-  analysis: string; // short contextual note, e.g. "Present in tools but overshadowed by TypeScript"
+  analysis: string;
 }
 
 export interface ATSFormattingCheck {
@@ -87,4 +82,3 @@ export interface ATSAnalysisResult {
   recommendations: ATSRecommendation[];
   summary: string;
 }
-
