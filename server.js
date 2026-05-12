@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
@@ -8,8 +9,15 @@ import os from 'os';
 const app = express();
 const PORT = 3001;
 
-app.use(cors());
-app.use(express.json({ limit: '20mb' })); // JSON avec limite pour les photos
+app.use(cors({ origin: ['http://localhost:3000', 'http://127.0.0.1:3000'] }));
+app.use(express.json({ limit: '20mb' }));
+
+const compileLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { error: 'Too many compilation requests, please wait a minute.' },
+});
+app.use('/compile', compileLimiter);
 
 // Endpoint pour compiler du LaTeX en PDF
 app.post('/compile', async (req, res) => {
@@ -38,7 +46,7 @@ app.post('/compile', async (req, res) => {
 
         // Compiler avec pdflatex (2 passes pour les références)
         await new Promise((resolve, reject) => {
-            const pdflatexPath = '/Library/TeX/texbin/pdflatex';
+            const pdflatexPath = process.env.PDFLATEX_PATH ?? '/Library/TeX/texbin/pdflatex';
             const command = `cd "${tempDir}" && "${pdflatexPath}" -interaction=nonstopmode "document.tex"`;
 
             exec(command, { timeout: 60000 }, (error, stdout, stderr) => {
