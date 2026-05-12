@@ -182,6 +182,7 @@ const parseWithGemini = async (pdfBase64: string): Promise<any> => {
         }
     });
 
+    if (!response.text) throw new Error('Empty response from Gemini');
     return JSON.parse(response.text);
 };
 
@@ -379,6 +380,7 @@ const analyzeWithGemini = async (cvText: string, jobDescription: string): Promis
             }
         }
     });
+    if (!response.text) throw new Error('Empty response from Gemini');
     return JSON.parse(response.text);
 };
 

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { INITIAL_CV_DATA } from './constants';
 import { CVData } from './types';
 import { LANGUAGES, createMultiLangString, createMultiLangArray } from './lib/i18n';
@@ -23,7 +23,10 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
 
-  const isAnalyzing = analysisStep !== 'idle' && analysisStep !== 'done' && analysisStep !== 'error';
+  useEffect(() => {
+    document.documentElement.lang = cvData.currentLanguage;
+  }, [cvData.currentLanguage]);
+
   const isOverlayVisible = analysisStep !== 'idle';
 
   // Sauvegarder le CV en JSON

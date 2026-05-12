@@ -253,7 +253,6 @@ const ATSChecker: React.FC<ATSCheckerProps> = ({ cvData, aiProvider }) => {
   const recommendations = result.recommendations ?? [];
 
   const missingCritical = criticals.filter(k => k.status === 'missing').length;
-  const missingImportant = importants.filter(k => k.status === 'missing').length;
   const failedFormatting = formatting.filter(c => c.status === 'fail').length;
 
   return (
