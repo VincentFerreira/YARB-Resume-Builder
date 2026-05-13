@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import Anthropic from "@anthropic-ai/sdk";
 import { CVData, ATSAnalysisResult } from "../types";
+import { getLangText, getLangArray, LANGUAGE_CODES } from '../lib/i18n';
 
 // Types pour le provider IA
 export type AIProvider = 'gemini' | 'claude';
@@ -181,6 +182,7 @@ const parseWithGemini = async (pdfBase64: string): Promise<any> => {
         }
     });
 
+    if (!response.text) throw new Error('Empty response from Gemini');
     return JSON.parse(response.text);
 };
 
@@ -241,44 +243,46 @@ const withTimeout = <T>(promise: Promise<T>): Promise<T> => {
 // ─── ATS Analysis ────────────────────────────────────────────────────────────
 
 const serializeCVForATS = (data: CVData): string => {
-    const { personalInfo: p, skills, experience, education, languages } = data;
+    const { personalInfo: p, skills, experience, education, languages, currentLanguage } = data;
     const lines: string[] = [];
 
     lines.push('== PERSONAL INFO ==');
     lines.push(`Name: ${p.firstName} ${p.lastName}`);
-    lines.push(`Title (FR): ${p.title.fr}`);
-    lines.push(`Title (EN): ${p.title.en}`);
+    // Show all available language versions of the title so the AI has full context
+    for (const code of LANGUAGE_CODES) {
+        const val = p.title[code];
+        if (val) lines.push(`Title (${code.toUpperCase()}): ${val}`);
+    }
     lines.push(`Location: ${p.location}`);
     lines.push(`Email: ${p.email}`);
     if (p.linkedin) lines.push(`LinkedIn: ${p.linkedin}`);
     if (p.github) lines.push(`GitHub: ${p.github}`);
-    lines.push(`Summary (EN): ${p.summary.en || p.summary.fr}`);
-    if (p.summary.fr && p.summary.fr !== p.summary.en) {
-        lines.push(`Summary (FR): ${p.summary.fr}`);
-    }
+    lines.push(`Summary: ${getLangText(p.summary, currentLanguage)}`);
+    const altSummary = LANGUAGE_CODES.filter(c => c !== currentLanguage).map(c => p.summary[c]).find(Boolean);
+    if (altSummary) lines.push(`Summary (alt): ${altSummary}`);
 
     lines.push('\n== SKILLS ==');
     for (const s of skills) {
-        lines.push(`[${s.name.en || s.name.fr}]: ${s.items.en || s.items.fr}`);
+        lines.push(`[${getLangText(s.name, currentLanguage)}]: ${getLangText(s.items, currentLanguage)}`);
     }
 
     lines.push('\n== EXPERIENCE ==');
     for (const e of experience) {
-        lines.push(`\n${e.role.en || e.role.fr} at ${e.company} (${e.location})`);
-        lines.push(`Period: ${e.startDate.en || e.startDate.fr} - ${e.endDate.en || e.endDate.fr}`);
+        lines.push(`\n${getLangText(e.role, currentLanguage)} at ${e.company} (${e.location})`);
+        lines.push(`Period: ${getLangText(e.startDate, currentLanguage)} - ${getLangText(e.endDate, currentLanguage)}`);
         if (e.techStack) lines.push(`Tech: ${e.techStack}`);
-        const bullets = e.description.en.length ? e.description.en : e.description.fr;
-        for (const b of bullets) lines.push(`  - ${b}`);
+        for (const b of getLangArray(e.description, currentLanguage)) lines.push(`  - ${b}`);
     }
 
     lines.push('\n== EDUCATION ==');
     for (const edu of education) {
-        lines.push(`${edu.degree.en || edu.degree.fr} — ${edu.school} (${edu.startDate}–${edu.endDate})`);
-        if (edu.description.en) lines.push(`  ${edu.description.en}`);
+        lines.push(`${getLangText(edu.degree, currentLanguage)} — ${edu.school} (${edu.startDate}–${edu.endDate})`);
+        const desc = getLangText(edu.description, currentLanguage);
+        if (desc) lines.push(`  ${desc}`);
     }
 
     lines.push('\n== LANGUAGES ==');
-    lines.push((languages.en.length ? languages.en : languages.fr).join(', '));
+    lines.push(getLangArray(languages, currentLanguage).join(', '));
 
     return lines.join('\n');
 };
@@ -376,6 +380,7 @@ const analyzeWithGemini = async (cvText: string, jobDescription: string): Promis
             }
         }
     });
+    if (!response.text) throw new Error('Empty response from Gemini');
     return JSON.parse(response.text);
 };
 

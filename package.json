@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "server": "node server.js",
+    "start": "concurrently -n vite,latex -c cyan,yellow \"npm run dev\" \"npm run server\"",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -14,13 +15,17 @@
     "@google/genai": "^1.40.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.5.1",
     "lucide-react": "^0.563.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

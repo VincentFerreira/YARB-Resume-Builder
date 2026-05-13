@@ -1,4 +1,5 @@
 import { CVData } from '../types';
+import { getLangText, getLangArray, LATEX_TRANSLATIONS } from '../lib/i18n';
 
 const escapeLatex = (str: string): string => {
   if (!str) return '';
@@ -32,26 +33,9 @@ const extractBase64Data = (dataUrl: string | null | undefined): { data: string; 
   return { data: match[2], extension: match[1] === 'jpeg' ? 'jpg' : match[1] };
 };
 
-const TRANSLATIONS = {
-  fr: {
-    skills: "Compétences",
-    experience: "Expérience",
-    education: "Éducation",
-    tech: "Tech :",
-    languages: "Langues"
-  },
-  en: {
-    skills: "Skills",
-    experience: "Experience",
-    education: "Education",
-    tech: "Tech:",
-    languages: "Languages"
-  }
-};
-
 export const generateLatex = (data: CVData): string => {
   const { personalInfo, skills, experience, education, languages, currentLanguage } = data;
-  const t = TRANSLATIONS[currentLanguage];
+  const t = LATEX_TRANSLATIONS[currentLanguage] ?? LATEX_TRANSLATIONS['fr'];
 
   // Vérifier si une photo est disponible
   const photoData = extractBase64Data(personalInfo.photo);
@@ -124,7 +108,7 @@ export const generateLatex = (data: CVData): string => {
 
   latex += `
     {\\fontsize{24}{30}\\selectfont\\color{darkblue}\\textbf{${escapeLatex(personalInfo.firstName)} \\uppercase{${escapeLatex(personalInfo.lastName)}}}} \\\\[0.2cm]
-    {\\Large\\color{accent} ${escapeLatex(personalInfo.title[currentLanguage])}} \\\\[0.3cm]
+    {\\Large\\color{accent} ${escapeLatex(getLangText(personalInfo.title, currentLanguage))}} \\\\[0.3cm]
     
     \\small\\color{graytext}
     \\faMapMarker* \\hspace{0.1cm} ${escapeLatex(personalInfo.location)} \\\\
@@ -137,7 +121,7 @@ export const generateLatex = (data: CVData): string => {
 \\vspace{0.5cm}
 \\noindent
 \\small\\color{graytext}
-${escapeLatexMultiline(personalInfo.summary[currentLanguage])}
+${escapeLatexMultiline(getLangText(personalInfo.summary, currentLanguage))}
 
 % SKILLS
 \\cvsection{${t.skills}}
@@ -148,7 +132,7 @@ ${escapeLatexMultiline(personalInfo.summary[currentLanguage])}
   latex += `  \\noalign{\\vspace{0.2cm}}\n`;
 
   skills.forEach(skill => {
-    latex += `\\textbf{${escapeLatex(skill.name[currentLanguage])}} & ${escapeLatex(skill.items[currentLanguage])} \\\\[0.25cm]\n`;
+    latex += `\\textbf{${escapeLatex(getLangText(skill.name, currentLanguage))}} & ${escapeLatex(getLangText(skill.items, currentLanguage))} \\\\[0.25cm]\n`;
   });
 
   latex += `\\end{tabularx}
@@ -166,13 +150,13 @@ ${escapeLatexMultiline(personalInfo.summary[currentLanguage])}
 \\needspace{3.5cm}
 \\noindent
 \\begin{tabularx}{\\linewidth}{@{}p{1.8cm} X@{}}
-\\textbf{${escapeLatex(exp.startDate[currentLanguage])}} & \\textbf{${escapeLatex(exp.role[currentLanguage])}} \\\\
-\\emph{${escapeLatex(exp.endDate[currentLanguage])}} & \\emph{${escapeLatex(exp.company)} -- ${escapeLatex(exp.location)}}
+\\textbf{${escapeLatex(getLangText(exp.startDate, currentLanguage))}} & \\textbf{${escapeLatex(getLangText(exp.role, currentLanguage))}} \\\\
+\\emph{${escapeLatex(getLangText(exp.endDate, currentLanguage))}} & \\emph{${escapeLatex(exp.company)} -- ${escapeLatex(exp.location)}}
 \\end{tabularx}%
 \\nopagebreak[4]%
 \\begin{itemize}[leftmargin=2.22cm, noitemsep, topsep=2pt, parsep=0pt, itemsep=1pt]
 `;
-    exp.description[currentLanguage].forEach(desc => {
+    getLangArray(exp.description, currentLanguage).forEach(desc => {
       latex += `    \\item ${escapeLatex(desc)}\n`;
     });
     latex += `\\end{itemize}%
@@ -190,9 +174,9 @@ ${isLast ? '' : '\\vspace{0.3cm}'}
 
   education.forEach(edu => {
     latex += `
-\\textbf{${escapeLatex(edu.startDate)} -- ${escapeLatex(edu.endDate)}} & \\textbf{${escapeLatex(edu.degree[currentLanguage])}} \\\\
+\\textbf{${escapeLatex(edu.startDate)} -- ${escapeLatex(edu.endDate)}} & \\textbf{${escapeLatex(getLangText(edu.degree, currentLanguage))}} \\\\
 & ${escapeLatex(edu.school)}, ${escapeLatex(edu.location)} \\\\
-& {\\small ${escapeLatex(edu.description[currentLanguage])}} \\\\[0.2cm]
+& {\\small ${escapeLatex(getLangText(edu.description, currentLanguage))}} \\\\[0.2cm]
 `;
   });
 
@@ -203,7 +187,7 @@ ${isLast ? '' : '\\vspace{0.3cm}'}
 \\cvsection{${t.languages}}
 \\vspace{-0.8cm}
 \\begin{itemize}[leftmargin=*, noitemsep]`;
-  languages[currentLanguage].forEach(lang => {
+  getLangArray(languages, currentLanguage).forEach(lang => {
     latex += `  \\item ${escapeLatex(lang)}\n`;
   });
   latex += `\\end{itemize}
