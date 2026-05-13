@@ -1,5 +1,10 @@
 # LaTeX CV Builder
 
+[![CI](https://github.com/vincentferreira/latex-cv-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/vincentferreira/latex-cv-builder/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/vincentferreira/latex-cv-builder/graph/badge.svg)](https://codecov.io/gh/vincentferreira/latex-cv-builder)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node.js ≥ 23](https://img.shields.io/badge/node-%E2%89%A523-brightgreen)](https://nodejs.org)
+
 A web app to build, edit, and export professional resumes as PDF — powered by a LaTeX template and AI extraction.
 
 ## Features
