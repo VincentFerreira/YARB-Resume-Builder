@@ -1,19 +1,24 @@
 import { CVData } from '../types';
 import { getLangText, getLangArray, LATEX_TRANSLATIONS } from '../lib/i18n';
 
+// Single-pass replacement prevents double-escaping: e.g. \ → \textbackslash{}
+// must not have its braces subsequently escaped to \{ \}.
+const LATEX_ESCAPE_MAP: Record<string, string> = {
+  '\\': '\\textbackslash{}',
+  '&':  '\\&',
+  '%':  '\\%',
+  '$':  '\\$',
+  '#':  '\\#',
+  '_':  '\\_',
+  '{':  '\\{',
+  '}':  '\\}',
+  '~':  '\\textasciitilde{}',
+  '^':  '\\textasciicircum{}',
+};
+
 const escapeLatex = (str: string): string => {
   if (!str) return '';
-  return str
-    .replace(/\\/g, '\\textbackslash{}')
-    .replace(/&/g, '\\&')
-    .replace(/%/g, '\\%')
-    .replace(/\$/g, '\\$')
-    .replace(/#/g, '\\#')
-    .replace(/_/g, '\\_')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}')
-    .replace(/\~/g, '\\textasciitilde{}')
-    .replace(/\^/g, '\\textasciicircum{}');
+  return str.replace(/[\\&%$#_{}~^]/g, (ch) => LATEX_ESCAPE_MAP[ch] ?? ch);
 };
 
 const escapeLatexMultiline = (str: string): string => {

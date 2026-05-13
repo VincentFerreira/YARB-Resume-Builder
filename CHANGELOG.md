@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PDFLATEX_PATH` environment variable to override the pdflatex binary path
 
 ### Fixed
+- `latexService.ts`: `escapeLatex` was double-escaping braces — `\` was first replaced by
+  `\textbackslash{}`, then `{` and `}` were subsequently escaped to `\{` `\}`, producing
+  invalid LaTeX `\textbackslash\{\}`. Replaced sequential `.replace()` chain with a single-pass
+  regex to fix the bug. (Caught by the new test suite.)
+
+
 - English translation for `previewLanguages` was "LANGUES" (French) — corrected to "LANGUAGES"
 - Missing TypeScript type definitions for React (added `@types/react`, `@types/react-dom`)
 - Gemini `response.text` could be `undefined` — added null guard before JSON.parse
