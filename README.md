@@ -1,4 +1,5 @@
-# LaTeX CV Builder
+# 🚀 YARB — Yet Another Resume Builder
+### *The precision of LaTeX, the intelligence of AI.*
 
 [![CI](https://github.com/vincentferreira/latex-cv-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/vincentferreira/latex-cv-builder/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/vincentferreira/latex-cv-builder/graph/badge.svg)](https://codecov.io/gh/vincentferreira/latex-cv-builder)

@@ -1,5 +1,5 @@
 {
-  "name": "LaTeX CV Builder",
-  "description": "A powerful resume builder that replicates the 'Awesome CV' style with a live preview and LaTeX code generation. Features a left-aligned photo layout.",
+  "name": "YARB — Yet Another Resume Builder",
+  "description": "The precision of LaTeX, the intelligence of AI.",
   "requestFramePermissions": []
 }

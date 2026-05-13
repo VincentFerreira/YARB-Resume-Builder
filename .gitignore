@@ -34,3 +34,6 @@ cv_*.json
 .cursor
 .gemini
 .vscode
+
+# Testing
+coverage/
