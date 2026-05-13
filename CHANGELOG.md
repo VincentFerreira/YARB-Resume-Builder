@@ -15,7 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `npm start` script to launch Vite dev server and LaTeX server concurrently
 - `.nvmrc` to pin Node.js version (23)
 - `LICENSE` file (MIT)
-- `SECURITY.md` documenting scope and API key risks
 - `CONTRIBUTING.md` with setup guide and project structure
 - Dynamic `html[lang]` attribute that follows the active CV language
 - Rate limiting on `/compile` endpoint (10 req/min)
