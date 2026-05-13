@@ -27,11 +27,10 @@ dist-ssr
 cv_*.pdf
 cv_*.json
 
-# agents
+# agents / editor internals (not repo metadata)
 .agents
 .agent
 .claude
 .cursor
 .gemini
-.github
 .vscode
