@@ -13,9 +13,9 @@ interface Props {
 }
 
 const STEPS: { id: AnalysisStep; label: string; sublabel: string }[] = [
-  { id: 'reading',    label: 'Lecture du fichier',    sublabel: 'Décodage du PDF en base64' },
-  { id: 'sending',    label: 'Envoi à l\'IA',          sublabel: 'En attente de la réponse API' },
-  { id: 'processing', label: 'Extraction des données', sublabel: 'Structuration du JSON' },
+  { id: 'reading',    label: 'Reading file',       sublabel: 'Decoding PDF to base64' },
+  { id: 'sending',    label: 'Sending to AI',      sublabel: 'Waiting for API response' },
+  { id: 'processing', label: 'Extracting data',   sublabel: 'Structuring JSON' },
 ];
 
 const STEP_ORDER: AnalysisStep[] = ['reading', 'sending', 'processing'];
@@ -23,19 +23,19 @@ const STEP_ORDER: AnalysisStep[] = ['reading', 'sending', 'processing'];
 function categorizeError(raw: string): { friendly: string; technical: string | null } {
   const lower = raw.toLowerCase();
   if (lower.includes('401') || lower.includes('403') || lower.includes('api key') || lower.includes('unauthorized')) {
-    return { friendly: 'Clé API invalide ou expirée. Vérifiez votre fichier .env.local.', technical: raw };
+    return { friendly: 'Invalid or expired API key. Check your .env.local file.', technical: raw };
   }
   if (lower.includes('429') || lower.includes('rate limit') || lower.includes('quota')) {
-    return { friendly: 'Limite de requêtes atteinte. Attendez quelques secondes et réessayez.', technical: raw };
+    return { friendly: 'Rate limit reached. Wait a few seconds and try again.', technical: raw };
   }
-  if (lower.includes('timeout') || lower.includes('expiré') || lower.includes('60 secondes')) {
-    return { friendly: 'La requête a expiré (> 60 s). L\'API est peut-être surchargée, réessayez.', technical: null };
+  if (lower.includes('timeout') || lower.includes('expired') || lower.includes('60 seconds')) {
+    return { friendly: 'Request timed out (> 60 s). The API may be overloaded, please retry.', technical: null };
   }
-  if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('connexion')) {
-    return { friendly: 'Impossible de joindre l\'API. Vérifiez votre connexion Internet.', technical: null };
+  if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('connection')) {
+    return { friendly: 'Unable to reach the API. Check your Internet connection.', technical: null };
   }
   if (lower.includes('json') || lower.includes('parse') || lower.includes('unexpected token')) {
-    return { friendly: 'La réponse de l\'IA n\'a pas pu être interprétée en JSON. Essayez l\'autre provider.', technical: raw };
+    return { friendly: 'The AI response could not be parsed as JSON. Try the other provider.', technical: raw };
   }
   return { friendly: raw, technical: null };
 }
@@ -81,10 +81,10 @@ const AnalysisOverlay: React.FC<Props> = ({ step, provider, error, timeoutSecond
           </div>
           <div className="flex-1">
             <h2 className="text-base font-bold text-slate-800">
-              {isError ? 'Échec de l\'analyse' : isDone ? 'Analyse terminée !' : 'Analyse du CV'}
+              {isError ? 'Analysis failed' : isDone ? 'Analysis complete!' : 'Analyzing CV'}
             </h2>
             <p className="text-sm text-slate-500 mt-0.5">
-              {isError ? 'Consultez le détail ci-dessous' : `Provider : ${providerLabel}`}
+              {isError ? 'See details below' : `Provider: ${providerLabel}`}
             </p>
           </div>
           {isActive && (
@@ -144,19 +144,19 @@ const AnalysisOverlay: React.FC<Props> = ({ step, provider, error, timeoutSecond
         {isActive && countdown === 0 && (
           <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4">
             <AlertCircle className="w-4 h-4 text-orange-500 shrink-0" />
-            <p className="text-sm text-orange-700">La requête prend plus longtemps que prévu…</p>
+            <p className="text-sm text-orange-700">The request is taking longer than expected…</p>
           </div>
         )}
 
         {/* Error detail */}
         {isError && parsedError && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-            <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1.5">Cause de l'erreur</p>
+            <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1.5">Error cause</p>
             <p className="text-sm text-red-700">{parsedError.friendly}</p>
             {parsedError.technical && parsedError.technical !== parsedError.friendly && (
               <details className="mt-3">
                 <summary className="text-xs text-red-400 cursor-pointer select-none hover:text-red-500">
-                  Message technique
+                  Technical message
                 </summary>
                 <p className="text-xs text-red-400 font-mono mt-1.5 break-all bg-red-100/50 p-2 rounded">
                   {parsedError.technical}
@@ -176,7 +176,7 @@ const AnalysisOverlay: React.FC<Props> = ({ step, provider, error, timeoutSecond
                 : 'bg-green-100 text-green-700 hover:bg-green-200'
             }`}
           >
-            {isError ? 'Fermer' : 'Parfait !'}
+            {isError ? 'Close' : 'Done!'}
           </button>
         )}
       </div>

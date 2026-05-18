@@ -13,7 +13,7 @@ const Preview: React.FC<PreviewProps> = ({ data }) => {
   const locale = LANGUAGES.find(l => l.code === lang)?.locale ?? 'fr-FR';
 
   return (
-    <div className="bg-white shadow-2xl w-full max-w-[21cm] min-h-[29.7cm] p-8 md:p-10 mx-auto text-slate-800 font-sans leading-relaxed origin-top scale-[0.6] sm:scale-[0.7] md:scale-[0.8] lg:scale-100 transition-transform duration-300">
+    <div id="cv-preview-export" className="bg-white shadow-2xl w-full max-w-[21cm] min-h-[29.7cm] p-8 md:p-10 mx-auto text-slate-800 font-sans leading-relaxed origin-top scale-[0.6] sm:scale-[0.7] md:scale-[0.8] lg:scale-100 transition-transform duration-300">
 
       {/* HEADER: Photo Left (Requested), Info Right */}
       <div className="flex flex-row gap-6 mb-8 items-center border-b pb-6 border-slate-200">

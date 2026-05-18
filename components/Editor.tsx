@@ -114,8 +114,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange }) => {
       experience: [{
         id: Date.now().toString(),
         role: createMultiLangString({ fr: 'Nouveau Poste', en: 'New Role' }),
-        company: 'Entreprise',
-        location: 'Lieu',
+        company: 'Company',
+        location: 'Location',
         startDate: createMultiLangString({ fr: 'Début', en: 'Start' }),
         endDate: createMultiLangString({ fr: 'Fin', en: 'End' }),
         description: createMultiLangArray({ fr: ['Description de la mission'], en: ['Task description'] }),
@@ -146,9 +146,9 @@ const Editor: React.FC<EditorProps> = ({ data, onChange }) => {
       ...data,
       education: [...data.education, {
         id: Date.now().toString(),
-        school: 'Université',
+        school: 'University',
         degree: createMultiLangString({ fr: 'Diplôme', en: 'Degree' }),
-        location: 'Ville',
+        location: 'City',
         startDate: '2020',
         endDate: '2022',
         description: createMultiLangString({ fr: 'Description', en: 'Description' }),
@@ -199,43 +199,75 @@ const Editor: React.FC<EditorProps> = ({ data, onChange }) => {
         {/* Personal Info */}
         <SectionHeader title={t.personalInfo} id="personal" />
         {activeSection === 'personal' && (
-          <div className="p-4 space-y-4 animate-in slide-in-from-top-2 duration-200">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="p-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-slate-500">{t.firstName}</label>
+                <input
+                  type="text"
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
+                  value={data.personalInfo.firstName}
+                  onChange={(e) => updatePersonal('firstName', e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-slate-500">{t.lastName}</label>
+                <input
+                  type="text"
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
+                  value={data.personalInfo.lastName}
+                  onChange={(e) => updatePersonal('lastName', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-500">{t.jobTitle}</label>
               <input
-                type="text" placeholder={t.firstName} className="border p-2 rounded"
-                value={data.personalInfo.firstName} onChange={(e) => updatePersonal('firstName', e.target.value)}
-              />
-              <input
-                type="text" placeholder={t.lastName} className="border p-2 rounded"
-                value={data.personalInfo.lastName} onChange={(e) => updatePersonal('lastName', e.target.value)}
+                type="text"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
+                value={getLangText(data.personalInfo.title, lang)}
+                onChange={(e) => updatePersonal('title', e.target.value)}
               />
             </div>
-            <input
-              type="text" placeholder={t.jobTitle} className="w-full border p-2 rounded"
-              value={getLangText(data.personalInfo.title, lang)}
-              onChange={(e) => updatePersonal('title', e.target.value)}
-            />
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 cursor-pointer bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded border border-slate-300 transition-colors">
-                <Upload className="w-4 h-4" />
-                <span className="text-sm">{t.changePhoto}</span>
-                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-              </label>
-              {data.personalInfo.photo && (
-                <span className="text-xs text-green-600">{t.photoLoaded}</span>
-              )}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-500">{t.changePhoto}</label>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 transition-colors text-sm font-medium text-slate-600">
+                  <Upload className="w-4 h-4" />
+                  <span>{t.changePhoto}</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                </label>
+                {data.personalInfo.photo && (
+                  <span className="text-xs text-emerald-600 font-medium">{t.photoLoaded}</span>
+                )}
+              </div>
             </div>
-            <textarea
-              placeholder={t.professionalSummary} className="w-full border p-2 rounded h-24"
-              value={getLangText(data.personalInfo.summary, lang)}
-              onChange={(e) => updatePersonal('summary', e.target.value)}
-            />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input type="email" placeholder="Email" className="border p-2 rounded" value={data.personalInfo.email} onChange={(e) => updatePersonal('email', e.target.value)} />
-              <input type="url" placeholder="Medium URL" className="border p-2 rounded" value={data.personalInfo.medium} onChange={(e) => updatePersonal('medium', e.target.value)} />
-              <input type="text" placeholder={t.address} className="border p-2 rounded" value={data.personalInfo.location} onChange={(e) => updatePersonal('location', e.target.value)} />
-              <input type="text" placeholder="LinkedIn URL" className="border p-2 rounded" value={data.personalInfo.linkedin} onChange={(e) => updatePersonal('linkedin', e.target.value)} />
-              <input type="text" placeholder="GitHub URL" className="border p-2 rounded" value={data.personalInfo.github} onChange={(e) => updatePersonal('github', e.target.value)} />
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-500">{t.professionalSummary}</label>
+              <textarea
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm h-24 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none transition-shadow"
+                value={getLangText(data.personalInfo.summary, lang)}
+                onChange={(e) => updatePersonal('summary', e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { label: 'Email', field: 'email', type: 'email', value: data.personalInfo.email },
+                { label: t.address, field: 'location', type: 'text', value: data.personalInfo.location },
+                { label: 'LinkedIn', field: 'linkedin', type: 'text', value: data.personalInfo.linkedin },
+                { label: 'GitHub', field: 'github', type: 'text', value: data.personalInfo.github },
+                { label: 'Medium', field: 'medium', type: 'url', value: data.personalInfo.medium },
+              ] as const).map(({ label, field, type, value }) => (
+                <div key={field} className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-slate-500">{label}</label>
+                  <input
+                    type={type}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
+                    value={value}
+                    onChange={(e) => updatePersonal(field, e.target.value)}
+                  />
+                </div>
+              ))}
             </div>
           </div>
         )}

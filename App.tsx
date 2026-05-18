@@ -1,158 +1,144 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { INITIAL_CV_DATA } from './constants';
 import { CVData } from './types';
-import { LANGUAGES, createMultiLangString, createMultiLangArray } from './lib/i18n';
+import { LANGUAGES } from './lib/i18n';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
+import LatexViewer from './components/LatexViewer';
+import PdfViewer from './components/PdfViewer';
 import ATSChecker from './components/ATSChecker';
 import AnalysisOverlay, { AnalysisStep } from './components/AnalysisOverlay';
+import ImportPdfModal from './components/ImportPdfModal';
+import CVManager from './components/CVManager';
 import { generateLatex, generateLatexWithPhoto } from './services/latexService';
 import { parseResumeFromPdf, AIProvider } from './services/aiService';
 import { compileToPdf, downloadBlob } from './services/pdfService';
-import { FileDown, X, UploadCloud, Loader2, Save, FolderOpen, Download } from 'lucide-react';
+import { exportAsHtml } from './services/htmlService';
+import { autoSaveToLocalStorage, restoreFromLocalStorage } from './services/cvStorageService';
+import {
+  UploadCloud, Loader2, Layers, Download,
+  ChevronDown, Eye, Code2, FileText, Globe,
+} from 'lucide-react';
+
+type PreviewMode = 'html' | 'latex' | 'pdf';
+
+const PREVIEW_MODES: { mode: PreviewMode; icon: React.ElementType; label: string }[] = [
+  { mode: 'html', icon: Eye, label: 'HTML' },
+  { mode: 'latex', icon: Code2, label: 'LaTeX' },
+  { mode: 'pdf', icon: FileText, label: 'PDF' },
+];
 
 const App: React.FC = () => {
   const [cvData, setCvData] = useState<CVData>(INITIAL_CV_DATA);
+  const [currentCVId, setCurrentCVId] = useState<string | null>(null);
+  const [currentCVName, setCurrentCVName] = useState('');
+  const [showCVManager, setShowCVManager] = useState(false);
   const [activeTab, setActiveTab] = useState<'editor' | 'ats'>('editor');
-  const [showLatex, setShowLatex] = useState(false);
-  const [latexCode, setLatexCode] = useState('');
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('html');
   const [analysisStep, setAnalysisStep] = useState<AnalysisStep>('idle');
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const jsonInputRef = useRef<HTMLInputElement>(null);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Restore last session from localStorage on startup
+  useEffect(() => {
+    const saved = restoreFromLocalStorage();
+    if (saved) setCvData(saved);
+  }, []);
+
+  // Auto-save to localStorage on every change (debounced 1s)
+  useEffect(() => {
+    const timer = setTimeout(() => autoSaveToLocalStorage(cvData), 1000);
+    return () => clearTimeout(timer);
+  }, [cvData]);
 
   useEffect(() => {
     document.documentElement.lang = cvData.currentLanguage;
   }, [cvData.currentLanguage]);
 
-  const isOverlayVisible = analysisStep !== 'idle';
-
-  // Sauvegarder le CV en JSON
-  const handleSaveJson = () => {
-    const dataStr = JSON.stringify(cvData, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const fileName = `cv_${cvData.personalInfo.firstName || 'export'}_${cvData.personalInfo.lastName || ''}_${new Date().toISOString().split('T')[0]}.json`;
-    link.download = fileName.replace(/\s+/g, '_');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  // Charger un CV depuis un fichier JSON
-  const handleLoadJsonClick = () => {
-    jsonInputRef.current?.click();
-  };
-
-  const handleJsonFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
-      alert('Veuillez sélectionner un fichier JSON.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const jsonData = JSON.parse(e.target?.result as string);
-
-        // Basic validation
-        if (!jsonData.personalInfo || !jsonData.skills || !jsonData.experience || !jsonData.education) {
-          alert('Le fichier JSON ne contient pas une structure de CV valide.');
-          return;
-        }
-
-        // Migration: convert old format to new format if needed
-        const migratedData: any = { ...jsonData };
-        if (!migratedData.currentLanguage) migratedData.currentLanguage = 'fr';
-
-        const toBilingual = (val: any) => typeof val === 'string' ? createMultiLangString({ fr: val, en: val }) : val;
-        const toBilingualArray = (val: any) => Array.isArray(val) ? createMultiLangArray({ fr: val, en: val }) : val;
-
-        if (typeof migratedData.personalInfo.title === 'string') {
-          migratedData.personalInfo.title = toBilingual(migratedData.personalInfo.title);
-        }
-        if (typeof migratedData.personalInfo.summary === 'string') {
-          migratedData.personalInfo.summary = toBilingual(migratedData.personalInfo.summary);
-        }
-
-        migratedData.skills = migratedData.skills.map((s: any) => ({
-          ...s,
-          name: toBilingual(s.name),
-          items: toBilingual(s.items)
-        }));
-
-        migratedData.experience = migratedData.experience.map((exp: any) => ({
-          ...exp,
-          role: toBilingual(exp.role),
-          startDate: toBilingual(exp.startDate),
-          endDate: toBilingual(exp.endDate),
-          description: toBilingualArray(exp.description)
-        }));
-
-        migratedData.education = migratedData.education.map((edu: any) => ({
-          ...edu,
-          degree: toBilingual(edu.degree),
-          description: toBilingual(edu.description)
-        }));
-
-        if (Array.isArray(migratedData.languages)) {
-          migratedData.languages = toBilingualArray(migratedData.languages);
-        } else if (!migratedData.languages) {
-          migratedData.languages = { fr: [], en: [] };
-        }
-
-        setCvData(migratedData as CVData);
-        alert('CV chargé avec succès !');
-      } catch (error) {
-        console.error('Error parsing JSON:', error);
-        alert('Erreur lors de la lecture du fichier JSON.');
+  // Close export dropdown on outside click
+  useEffect(() => {
+    if (!showExportDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target as Node)) {
+        setShowExportDropdown(false);
       }
     };
-    reader.readAsText(file);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showExportDropdown]);
 
-    // Reset input
-    if (jsonInputRef.current) {
-      jsonInputRef.current.value = '';
-    }
+  const isOverlayVisible = analysisStep !== 'idle';
+
+  // CV Manager callbacks
+  const handleCVLoad = (data: CVData, id: string, name: string) => {
+    setCvData(data);
+    setCurrentCVId(id || null);
+    setCurrentCVName(name);
   };
 
-  const handleGenerateLatex = () => {
+  const handleCVSaved = (id: string, name: string) => {
+    setCurrentCVId(id || null);
+    setCurrentCVName(name);
+  };
+
+  const handleNewCV = () => {
+    setCvData(INITIAL_CV_DATA);
+    setCurrentCVId(null);
+    setCurrentCVName('');
+  };
+
+  // JSON export
+  const handleExportJson = () => {
+    setShowExportDropdown(false);
+    const dataStr = JSON.stringify(cvData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const fileName = `cv_${cvData.personalInfo.firstName || 'export'}_${cvData.personalInfo.lastName || ''}_${new Date().toISOString().split('T')[0]}.json`;
+    downloadBlob(blob, fileName.replace(/\s+/g, '_'));
+  };
+
+  const handleExportHtml = () => {
+    setShowExportDropdown(false);
+    // Ensure we're on the HTML view so the DOM element exists
+    if (previewMode !== 'html') setPreviewMode('html');
+    // Delay slightly to allow React to render the Preview if not already shown
+    setTimeout(() => exportAsHtml(cvData), 50);
+  };
+
+  const handleExportLatex = () => {
+    setShowExportDropdown(false);
     const code = generateLatex(cvData);
-    setLatexCode(code);
-    setShowLatex(true);
+    const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+    const fileName = `cv_${cvData.personalInfo.firstName || 'export'}_${cvData.personalInfo.lastName || ''}.tex`.replace(/\s+/g, '_');
+    downloadBlob(blob, fileName);
   };
 
-  const handleDownloadPdf = async () => {
+  const handleExportPdf = async () => {
+    setShowExportDropdown(false);
     setIsGeneratingPdf(true);
     try {
-      const { latex: latexCode, photoData } = generateLatexWithPhoto(cvData);
-      const pdfBlob = await compileToPdf(latexCode, photoData);
+      const { latex, photoData } = generateLatexWithPhoto(cvData);
+      const pdfBlob = await compileToPdf(latex, photoData);
       const fileName = `cv_${cvData.personalInfo.firstName || 'export'}_${cvData.personalInfo.lastName || ''}.pdf`;
       downloadBlob(pdfBlob, fileName.replace(/\s+/g, '_'));
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert('Erreur lors de la génération du PDF. Veuillez réessayer.');
+      alert('Error generating PDF. Make sure the LaTeX server is running on port 3001.');
     } finally {
       setIsGeneratingPdf(false);
     }
   };
 
-  const [copied, setCopied] = useState(false);
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(latexCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleImportClick = () => {
+    setShowImportModal(true);
   };
 
-  const handleImportClick = () => {
+  const handleImportConfirm = () => {
+    setShowImportModal(false);
     fileInputRef.current?.click();
   };
 
@@ -163,7 +149,7 @@ const App: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
 
     if (file.type !== 'application/pdf') {
-      setAnalysisError('Le fichier sélectionné n\'est pas un PDF.');
+      setAnalysisError('The selected file is not a PDF.');
       setAnalysisStep('error');
       return;
     }
@@ -191,7 +177,7 @@ const App: React.FC = () => {
       }
     };
     reader.onerror = () => {
-      setAnalysisError('Impossible de lire le fichier. Vérifiez qu\'il n\'est pas corrompu.');
+      setAnalysisError('Unable to read the file. Make sure it is not corrupted.');
       setAnalysisStep('error');
     };
     reader.readAsDataURL(file);
@@ -211,19 +197,37 @@ const App: React.FC = () => {
         timeoutSeconds={60}
         onDismiss={handleDismissAnalysis}
       />
+      <ImportPdfModal
+        open={showImportModal}
+        aiProvider={aiProvider}
+        onAiProviderChange={setAiProvider}
+        onConfirm={handleImportConfirm}
+        onClose={() => setShowImportModal(false)}
+      />
+      <CVManager
+        open={showCVManager}
+        onClose={() => setShowCVManager(false)}
+        currentCVId={currentCVId}
+        currentCVName={currentCVName}
+        cvData={cvData}
+        onLoad={handleCVLoad}
+        onSaved={handleCVSaved}
+        onNewCV={handleNewCV}
+      />
 
       {/* Navbar */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center z-10 shrink-0">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <span className="bg-indigo-600 text-white p-1 rounded">CV</span> Builder
+      <header className="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center z-10 shrink-0 gap-4">
+        <div className="flex items-center gap-3 shrink-0">
+          <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <span className="bg-indigo-600 text-white px-1.5 py-0.5 rounded-md text-sm">CV</span>
+            Builder
           </h1>
-          <div className="flex bg-slate-100 rounded p-1 gap-1">
+          <div className="flex bg-slate-100 rounded-lg p-0.5">
             {LANGUAGES.map(({ code, label }) => (
               <button
                 key={code}
                 onClick={() => setCvData(prev => ({ ...prev, currentLanguage: code }))}
-                className={`px-3 py-1 text-sm rounded transition-colors ${cvData.currentLanguage === code ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-500 hover:bg-slate-200'}`}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${cvData.currentLanguage === code ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 {label}
               </button>
@@ -231,86 +235,88 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex gap-3">
-          <input
-            type="file"
-            accept=".json"
-            ref={jsonInputRef}
-            className="hidden"
-            onChange={handleJsonFileChange}
-          />
-          <input
-            type="file"
-            accept=".pdf"
-            ref={fileInputRef}
-            className="hidden"
-            onChange={handleFileChange}
-          />
+        <div className="flex items-center gap-2">
+          <input type="file" accept=".pdf" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+
           <button
-            onClick={handleLoadJsonClick}
-            className="flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded hover:bg-emerald-100 transition-colors"
+            onClick={() => setShowCVManager(true)}
+            className="flex items-center gap-1.5 bg-white text-slate-700 border border-slate-200 px-3.5 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
             disabled={isOverlayVisible}
-            title="Charger un CV sauvegardé"
+            title={currentCVName ? `Current CV: ${currentCVName}` : 'Manage my CVs'}
           >
-            <FolderOpen className="w-4 h-4" />
-            Charger
+            <Layers className="w-4 h-4" />
+            {currentCVName ? currentCVName : 'My CVs'}
           </button>
-          <button
-            onClick={handleSaveJson}
-            className="flex items-center gap-2 bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded hover:bg-amber-100 transition-colors"
-            disabled={isOverlayVisible}
-            title="Sauvegarder le CV en JSON"
-          >
-            <Save className="w-4 h-4" />
-            Sauvegarder
-          </button>
-          <select
-            value={aiProvider}
-            onChange={(e) => setAiProvider(e.target.value as AIProvider)}
-            className="bg-slate-50 text-slate-700 border border-slate-200 px-3 py-2 rounded hover:bg-slate-100 transition-colors cursor-pointer"
-            disabled={isOverlayVisible}
-            title="Choisir le modèle IA"
-          >
-            <option value="gemini">🤖 Gemini</option>
-            <option value="claude">🧠 Claude</option>
-          </select>
+
+          <div className="w-px h-6 bg-slate-200 mx-1" />
+
           <button
             onClick={handleImportClick}
-            className="flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded hover:bg-indigo-100 transition-colors"
+            className="flex items-center gap-1.5 bg-white text-slate-700 border border-slate-200 px-3.5 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
             disabled={isOverlayVisible}
+            title="Import an existing CV via AI"
           >
             <UploadCloud className="w-4 h-4" />
-            Importer PDF
+            Import PDF
           </button>
-          <button
-            onClick={handleDownloadPdf}
-            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 transition-colors"
-            disabled={isOverlayVisible || isGeneratingPdf}
-          >
-            {isGeneratingPdf ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Download className="w-4 h-4" />
+
+          {/* Export dropdown */}
+          <div className="relative" ref={exportDropdownRef}>
+            <button
+              onClick={() => setShowExportDropdown(v => !v)}
+              className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              disabled={isOverlayVisible || isGeneratingPdf}
+            >
+              {isGeneratingPdf ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {isGeneratingPdf ? 'Generating…' : 'Export'}
+              {!isGeneratingPdf && <ChevronDown className="w-3.5 h-3.5 ml-0.5" />}
+            </button>
+
+            {showExportDropdown && (
+              <div className="absolute top-full right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-[160px] z-20">
+                <button
+                  onClick={handleExportHtml}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <Globe className="w-4 h-4 text-slate-400" />
+                  HTML
+                </button>
+                <button
+                  onClick={handleExportLatex}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <Code2 className="w-4 h-4 text-slate-400" />
+                  LaTeX (.tex)
+                </button>
+                <button
+                  onClick={handleExportPdf}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <FileText className="w-4 h-4 text-slate-400" />
+                  PDF
+                </button>
+                <div className="my-1 border-t border-slate-100" />
+                <button
+                  onClick={handleExportJson}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <Download className="w-4 h-4 text-slate-400" />
+                  JSON (backup)
+                </button>
+              </div>
             )}
-            {isGeneratingPdf ? 'Génération...' : 'Télécharger PDF'}
-          </button>
-          <button
-            onClick={handleGenerateLatex}
-            className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 transition-colors"
-            disabled={isOverlayVisible || isGeneratingPdf}
-          >
-            <FileDown className="w-4 h-4" />
-            Exporter en LaTeX
-          </button>
+          </div>
         </div>
       </header>
-
 
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden">
         {/* Editor Panel (Left) */}
         <div className="w-full md:w-1/3 lg:w-1/4 min-w-[350px] border-r border-slate-200 bg-white h-full overflow-hidden flex flex-col">
-          {/* Tabs */}
           <div className="flex border-b border-slate-200 shrink-0">
             <button
               onClick={() => setActiveTab('editor')}
@@ -320,7 +326,7 @@ const App: React.FC = () => {
                   : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
               }`}
             >
-              Éditeur
+              Editor
             </button>
             <button
               onClick={() => setActiveTab('ats')}
@@ -333,52 +339,42 @@ const App: React.FC = () => {
               ATS Checker
             </button>
           </div>
-          {/* Tab content */}
           <div className="flex-1 overflow-hidden">
             {activeTab === 'editor'
               ? <Editor data={cvData} onChange={setCvData} />
-              : <ATSChecker cvData={cvData} aiProvider={aiProvider} />
+              : <ATSChecker cvData={cvData} aiProvider={aiProvider} onAiProviderChange={setAiProvider} />
             }
           </div>
         </div>
 
         {/* Preview Panel (Right) */}
-        <div className="flex-1 bg-slate-100 overflow-auto p-8 flex justify-center items-start">
-          <Preview data={cvData} />
-        </div>
-      </main>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* View Switcher */}
+          <div className="bg-white border-b border-slate-200 px-4 py-2 flex justify-center items-center gap-1 shrink-0">
+            {PREVIEW_MODES.map(({ mode, icon: Icon, label }) => (
+              <button
+                key={mode}
+                onClick={() => setPreviewMode(mode)}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  previewMode === mode
+                    ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
+          </div>
 
-      {/* LaTeX Modal */}
-      {showLatex && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h3 className="text-lg font-bold">Code Source LaTeX</h3>
-              <button onClick={() => setShowLatex(false)} className="p-2 hover:bg-slate-100 rounded-full">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 p-4 bg-slate-50 overflow-hidden relative">
-              <textarea
-                readOnly
-                className="w-full h-full p-4 font-mono text-sm bg-slate-900 text-slate-300 resize-none rounded focus:outline-none"
-                value={latexCode}
-              />
-            </div>
-            <div className="p-4 border-t flex justify-end gap-3 bg-white rounded-b-xl">
-              <div className="text-xs text-slate-500 self-center mr-auto">
-                * Copiez ce code dans Overleaf ou un éditeur .tex. Assurez-vous d'avoir une image nommée 'photo.jpg' pour la photo.
-              </div>
-              <button onClick={() => setShowLatex(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">
-                Fermer
-              </button>
-              <button onClick={copyToClipboard} className={`px-4 py-2 rounded font-medium transition-colors ${copied ? 'bg-green-600 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
-                {copied ? '✓ Copié !' : 'Copier le code'}
-              </button>
-            </div>
+          {/* View Content */}
+          <div className={`flex-1 overflow-auto ${previewMode === 'latex' ? 'p-4 bg-slate-800' : previewMode === 'pdf' ? 'p-4 bg-slate-100' : 'p-8 bg-slate-100 flex justify-center items-start'}`}>
+            {previewMode === 'html' && <Preview data={cvData} />}
+            {previewMode === 'latex' && <LatexViewer data={cvData} />}
+            {previewMode === 'pdf' && <PdfViewer data={cvData} />}
           </div>
         </div>
-      )}
+      </main>
     </div>
   );
 };
