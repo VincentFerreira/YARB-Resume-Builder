@@ -166,6 +166,10 @@ app.delete('/cvs/:id', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`LaTeX compilation server running on http://localhost:${PORT}`);
-});
+export { app };
+
+if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, () => {
+        console.log(`LaTeX compilation server running on http://localhost:${PORT}`);
+    });
+}

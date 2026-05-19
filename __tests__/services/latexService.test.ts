@@ -246,6 +246,92 @@ describe('generateLatex — photo', () => {
   });
 });
 
+// ── escapeLatexMultiline ──────────────────────────────────────────────────────
+
+describe('generateLatex — escapeLatexMultiline via summary', () => {
+  it('joins multiline text with LaTeX line breaks', () => {
+    const cv = makeCV();
+    cv.personalInfo.summary = { fr: 'Ligne 1\nLigne 2', en: 'Line 1\nLine 2' };
+    const latex = generateLatex(cv);
+    expect(latex).toContain('Ligne 1 \\\\\nLigne 2');
+  });
+
+  it('escapes special chars on each line independently', () => {
+    const cv = makeCV();
+    cv.personalInfo.summary = { fr: 'Taux: 80%\nScore: 100%', en: '' };
+    const latex = generateLatex(cv);
+    expect(latex).toContain('Taux: 80\\%');
+    expect(latex).toContain('Score: 100\\%');
+  });
+
+  it('returns empty string for empty summary', () => {
+    const cv = makeCV();
+    cv.personalInfo.summary = { fr: '', en: '' };
+    const latex = generateLatex(cv);
+    expect(latex).toContain('\\end{document}');
+  });
+});
+
+// ── Edge cases: empty arrays ──────────────────────────────────────────────────
+
+describe('generateLatex — empty arrays', () => {
+  it('produces valid LaTeX with no skills', () => {
+    const cv = makeCV({ skills: [] });
+    const latex = generateLatex(cv);
+    expect(latex).toContain('\\begin{document}');
+    expect(latex).toContain('\\end{document}');
+    expect(latex).toContain('\\end{tabularx}');
+  });
+
+  it('produces valid LaTeX with no experience entries', () => {
+    const cv = makeCV({ experience: [] });
+    const latex = generateLatex(cv);
+    expect(latex).toContain('\\cvsection{');
+    expect(latex).toContain('\\end{document}');
+  });
+
+  it('produces valid LaTeX with no education entries', () => {
+    const cv = makeCV({ education: [] });
+    const latex = generateLatex(cv);
+    expect(latex).toContain('\\end{tabularx}');
+    expect(latex).toContain('\\end{document}');
+  });
+
+  it('produces valid LaTeX with empty languages', () => {
+    const cv = makeCV({ languages: { fr: [], en: [] } });
+    const latex = generateLatex(cv);
+    expect(latex).toContain('\\end{itemize}');
+    expect(latex).toContain('\\end{document}');
+  });
+});
+
+// ── Edge cases: missing optional fields ──────────────────────────────────────
+
+describe('generateLatex — missing optional fields', () => {
+  it('omits tech stack line gracefully when techStack is empty', () => {
+    const cv = makeCV();
+    cv.experience[0].techStack = '';
+    const latex = generateLatex(cv);
+    expect(latex).toContain('\\end{document}');
+    expect(latex).toContain('\\begin{document}');
+  });
+
+  it('renders correctly when location is empty', () => {
+    const cv = makeCV();
+    cv.personalInfo.location = '';
+    const latex = generateLatex(cv);
+    expect(latex).toContain('\\faMapMarker*');
+    expect(latex).not.toContain('{Paris, France}');
+  });
+
+  it('renders correctly when medium is empty', () => {
+    const cv = makeCV();
+    cv.personalInfo.medium = '';
+    const latex = generateLatex(cv);
+    expect(latex).toContain('\\faMedium');
+  });
+});
+
 // ── generateLatexWithPhoto ────────────────────────────────────────────────────
 
 describe('generateLatexWithPhoto', () => {

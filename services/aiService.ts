@@ -233,7 +233,7 @@ const parseWithClaude = async (pdfBase64: string): Promise<any> => {
 
 const TIMEOUT_MS = 60_000;
 
-const withTimeout = <T>(promise: Promise<T>): Promise<T> => {
+export const withTimeout = <T>(promise: Promise<T>): Promise<T> => {
     const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Timeout: la requête a dépassé 60 secondes')), TIMEOUT_MS)
     );
@@ -242,7 +242,7 @@ const withTimeout = <T>(promise: Promise<T>): Promise<T> => {
 
 // ─── ATS Analysis ────────────────────────────────────────────────────────────
 
-const serializeCVForATS = (data: CVData): string => {
+export const serializeCVForATS = (data: CVData): string => {
     const { personalInfo: p, skills, experience, education, languages, currentLanguage } = data;
     const lines: string[] = [];
 

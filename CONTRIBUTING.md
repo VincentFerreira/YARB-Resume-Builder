@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in latex-cv-builder!
+Thank you for your interest in YARB !
 
 ## Prerequisites
 
