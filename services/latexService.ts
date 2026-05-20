@@ -1,5 +1,9 @@
 import { CVData } from '../types';
 import { getLangText, getLangArray, LATEX_TRANSLATIONS } from '../lib/i18n';
+import { getFontById } from '../lib/fonts';
+import { render } from '../lib/templateEngine';
+import { loadLatexTemplate } from './templateStorageService';
+import rawTemplate from '../templates/cv.mustache?raw';
 
 // Single-pass replacement prevents double-escaping: e.g. \ → \textbackslash{}
 // must not have its braces subsequently escaped to \{ \}.
@@ -16,7 +20,7 @@ const LATEX_ESCAPE_MAP: Record<string, string> = {
   '^':  '\\textasciicircum{}',
 };
 
-const escapeLatex = (str: string): string => {
+export const escapeLatex = (str: string): string => {
   if (!str) return '';
   return str.replace(/[\\&%$#_{}~^]/g, (ch) => LATEX_ESCAPE_MAP[ch] ?? ch);
 };
@@ -38,167 +42,100 @@ const extractBase64Data = (dataUrl: string | null | undefined): { data: string; 
   return { data: match[2], extension: match[1] === 'jpeg' ? 'jpg' : match[1] };
 };
 
-export const generateLatex = (data: CVData): string => {
+export const getTemplate = (): string => loadLatexTemplate() ?? rawTemplate;
+
+interface LatexTemplateData {
+  fontPackage: string;
+  hasPhoto: boolean;
+  photoExtension: string;
+  firstName: string;
+  lastName: string;
+  title: string;
+  location: string;
+  email: string;
+  medium: string;
+  linkedin: string;
+  github: string;
+  summary: string;
+  tSkills: string;
+  tExperience: string;
+  tEducation: string;
+  tLanguages: string;
+  tTech: string;
+  skills: { name: string; items: string }[];
+  experience: {
+    startDate: string;
+    endDate: string;
+    role: string;
+    company: string;
+    location: string;
+    description: string[];
+    techStack: string;
+    hasSpacing: boolean;
+  }[];
+  education: {
+    startDate: string;
+    endDate: string;
+    degree: string;
+    school: string;
+    location: string;
+    description: string;
+  }[];
+  languages: string[];
+}
+
+const buildTemplateData = (data: CVData, fontId?: string): LatexTemplateData => {
   const { personalInfo, skills, experience, education, languages, currentLanguage } = data;
   const t = LATEX_TRANSLATIONS[currentLanguage] ?? LATEX_TRANSLATIONS['fr'];
-
-  // Vérifier si une photo est disponible
   const photoData = extractBase64Data(personalInfo.photo);
-  const hasPhoto = !!photoData;
 
-  let latex = `\\documentclass[11pt, a4paper]{article}
+  return {
+    fontPackage: getFontById(fontId).latexPackage,
+    hasPhoto: !!photoData,
+    photoExtension: photoData?.extension ?? 'jpg',
+    firstName: escapeLatex(personalInfo.firstName),
+    lastName: escapeLatex(personalInfo.lastName),
+    title: escapeLatex(getLangText(personalInfo.title, currentLanguage)),
+    location: escapeLatex(personalInfo.location),
+    email: escapeLatex(personalInfo.email),
+    medium: escapeLatex(personalInfo.medium),
+    linkedin: escapeLatex(personalInfo.linkedin),
+    github: escapeLatex(personalInfo.github),
+    summary: escapeLatexMultiline(getLangText(personalInfo.summary, currentLanguage)),
+    tSkills: t.skills,
+    tExperience: t.experience,
+    tEducation: t.education,
+    tLanguages: t.languages,
+    tTech: t.tech,
+    skills: skills.map(s => ({
+      name: escapeLatex(getLangText(s.name, currentLanguage)),
+      items: escapeLatex(getLangText(s.items, currentLanguage)),
+    })),
+    experience: experience.map((exp, i) => ({
+      startDate: escapeLatex(getLangText(exp.startDate, currentLanguage)),
+      endDate: escapeLatex(getLangText(exp.endDate, currentLanguage)),
+      role: escapeLatex(getLangText(exp.role, currentLanguage)),
+      company: escapeLatex(exp.company),
+      location: escapeLatex(exp.location),
+      description: getLangArray(exp.description, currentLanguage).map(escapeLatex),
+      techStack: escapeLatex(exp.techStack),
+      hasSpacing: i < experience.length - 1,
+    })),
+    education: education.map(edu => ({
+      startDate: escapeLatex(edu.startDate),
+      endDate: escapeLatex(edu.endDate),
+      degree: escapeLatex(getLangText(edu.degree, currentLanguage)),
+      school: escapeLatex(edu.school),
+      location: escapeLatex(edu.location),
+      description: escapeLatex(getLangText(edu.description, currentLanguage)),
+    })),
+    languages: getLangArray(languages, currentLanguage).map(escapeLatex),
+  };
+};
 
-% Packages
-\\usepackage[utf8]{inputenc}
-\\usepackage[T1]{fontenc}
-\\usepackage[default]{raleway}
-\\usepackage{geometry}
-\\usepackage{fontawesome5}
-\\usepackage{xcolor}
-\\usepackage{hyperref}
-\\usepackage{titlesec}
-\\usepackage{enumitem}
-\\usepackage{graphicx}
-\\usepackage{tabularx}
-\\newcommand{\\needspace}[1]{\\vskip#1\\relax\\penalty9999\\relax\\vskip-#1\\relax}
-
-% Colors
-\\definecolor{darkblue}{RGB}{50, 60, 110}
-\\definecolor{graytext}{RGB}{80, 80, 80}
-\\definecolor{lightgray}{RGB}{200, 200, 200}
-\\definecolor{accent}{RGB}{59, 130, 246} % Blue-500 similar
-
-% Page Layout
-\\geometry{left=1.5cm, right=1.5cm, top=1.5cm, bottom=1.5cm}
-\\pagestyle{empty}
-\\linespread{1.15}
-
-% Éviter les veuves et orphelines
-\\widowpenalty=10000
-\\clubpenalty=10000
-\\brokenpenalty=10000
-
-% Commands
-\\newcommand{\\cvsection}[1]{
-  \\nopagebreak[4]
-  \\vspace{0.6cm}
-  {\\color{darkblue}\\Large\\bfseries\\uppercase{#1}} \\\\[-0.2cm]
-  {\\color{darkblue}\\rule{\\linewidth}{1pt}}
-  \\vspace{0.35cm}
-  \\nopagebreak[4]
-}
-
-\\newcommand{\\cvtag}[1]{
-  \\tikz[baseline]\\node[anchor=base,draw=lightgray,rounded corners,inner xsep=1ex,inner ysep =0.75ex,text height=1.5ex,text depth=.25ex]{\\small #1};
-}
-
-\\begin{document}
-
-% HEADER (Photo Left, Info Right)
-\\noindent
-`;
-
-  // Ajouter la minipage pour la photo seulement si elle existe
-  if (hasPhoto) {
-    latex += `\\begin{minipage}{0.22\\textwidth}
-    \\begin{center}
-        \\includegraphics[width=3cm, height=3.5cm, keepaspectratio]{photo.${photoData.extension}}
-    \\end{center}
-\\end{minipage}%
-\\hspace{0.03\\textwidth}%
-\\begin{minipage}{0.75\\textwidth}`;
-  } else {
-    latex += `\\begin{minipage}{\\textwidth}`
-  }
-
-  latex += `
-    {\\fontsize{24}{30}\\selectfont\\color{darkblue}\\textbf{${escapeLatex(personalInfo.firstName)} \\uppercase{${escapeLatex(personalInfo.lastName)}}}} \\\\[0.2cm]
-    {\\Large\\color{accent} ${escapeLatex(getLangText(personalInfo.title, currentLanguage))}} \\\\[0.3cm]
-    
-    \\small\\color{graytext}
-    \\faMapMarker* \\hspace{0.1cm} ${escapeLatex(personalInfo.location)} \\\\
-    \\faEnvelope \\hspace{0.1cm} ${escapeLatex(personalInfo.email)} \\quad
-    \\faMedium \\hspace{0.1cm} ${escapeLatex(personalInfo.medium)} \\\\
-    \\faLinkedin \\hspace{0.1cm} ${escapeLatex(personalInfo.linkedin)}${personalInfo.github ? ` \\quad
-    \\faGithub \\hspace{0.1cm} ${escapeLatex(personalInfo.github)}` : ''}
-\\end{minipage}
-
-\\vspace{0.5cm}
-\\noindent
-\\small\\color{graytext}
-${escapeLatexMultiline(getLangText(personalInfo.summary, currentLanguage))}
-
-% SKILLS
-\\cvsection{${t.skills}}
-\\vspace{0.45cm}
-\\begin{tabularx}{\\linewidth}{@{}l X@{}}
-`;
-
-  latex += `  \\noalign{\\vspace{0.2cm}}\n`;
-
-  skills.forEach(skill => {
-    latex += `\\textbf{${escapeLatex(getLangText(skill.name, currentLanguage))}} & ${escapeLatex(getLangText(skill.items, currentLanguage))} \\\\[0.25cm]\n`;
-  });
-
-  latex += `\\end{tabularx}
-
-% EXPERIENCE
-\\cvsection{${t.experience}}
-\\vspace{-0.2cm}
-`;
-
-  experience.forEach((exp, index) => {
-    const isLast = index === experience.length - 1;
-    // needspace: réserver ~3.5cm = assez pour l'en-tête + 1 item visible
-    // Si l'espace restant est insuffisant, LaTeX saute en bas de page
-    latex += `
-\\needspace{3.5cm}
-\\noindent
-\\begin{tabularx}{\\linewidth}{@{}p{1.8cm} X@{}}
-\\textbf{${escapeLatex(getLangText(exp.startDate, currentLanguage))}} & \\textbf{${escapeLatex(getLangText(exp.role, currentLanguage))}} \\\\
-\\emph{${escapeLatex(getLangText(exp.endDate, currentLanguage))}} & \\emph{${escapeLatex(exp.company)} -- ${escapeLatex(exp.location)}}
-\\end{tabularx}%
-\\nopagebreak[4]%
-\\begin{itemize}[leftmargin=2.22cm, noitemsep, topsep=2pt, parsep=0pt, itemsep=1pt]
-`;
-    getLangArray(exp.description, currentLanguage).forEach(desc => {
-      latex += `    \\item ${escapeLatex(desc)}\n`;
-    });
-    latex += `\\end{itemize}%
-\\nopagebreak[4]%
-\\noindent\\hspace{2.22cm}\\begin{minipage}[t]{\\dimexpr\\linewidth-2.22cm\\relax}{\\footnotesize \\color{graytext} ${t.tech} ${escapeLatex(exp.techStack)}}\\end{minipage}
-${isLast ? '' : '\\vspace{0.3cm}'}
-`;
-  });
-
-  latex += `% EDUCATION
-\\cvsection{${t.education}}
-\\vspace{0.1cm}
-\\begin{tabularx}{\\linewidth}{@{}p{2.4cm} X@{}}
-`;
-
-  education.forEach(edu => {
-    latex += `
-\\textbf{${escapeLatex(edu.startDate)} -- ${escapeLatex(edu.endDate)}} & \\textbf{${escapeLatex(getLangText(edu.degree, currentLanguage))}} \\\\
-& ${escapeLatex(edu.school)}, ${escapeLatex(edu.location)} \\\\
-& {\\small ${escapeLatex(getLangText(edu.description, currentLanguage))}} \\\\[0.2cm]
-`;
-  });
-
-  latex += `\\end{tabularx}
-\\vspace{-0.5cm}
-\\indent
-% LANGUAGES
-\\cvsection{${t.languages}}
-\\vspace{-0.8cm}
-\\begin{itemize}[leftmargin=*, noitemsep]`;
-  getLangArray(languages, currentLanguage).forEach(lang => {
-    latex += `  \\item ${escapeLatex(lang)}\n`;
-  });
-  latex += `\\end{itemize}
-\\end{document}`;
-
-  return latex;
+export const generateLatex = (data: CVData, template?: string, fontId?: string): string => {
+  const tpl = template ?? getTemplate();
+  return render(tpl, buildTemplateData(data, fontId));
 };
 
 // Export pour le serveur: retourne le LaTeX + les données de photo si disponible
