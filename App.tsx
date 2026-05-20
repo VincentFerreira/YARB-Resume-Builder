@@ -368,7 +368,13 @@ const App: React.FC = () => {
           </div>
 
           {/* View Content */}
-          <div className={`flex-1 overflow-auto ${previewMode === 'latex' ? 'p-4 bg-slate-800' : previewMode === 'pdf' ? 'p-4 bg-slate-100' : 'p-8 bg-slate-100 flex justify-center items-start'}`}>
+          <div className={`flex-1 ${
+            previewMode === 'latex'
+              ? 'overflow-hidden'
+              : previewMode === 'pdf'
+              ? 'overflow-auto p-4 bg-slate-100'
+              : 'overflow-auto p-8 bg-slate-100 flex justify-center items-start'
+          }`}>
             {previewMode === 'html' && <Preview data={cvData} />}
             {previewMode === 'latex' && <LatexViewer data={cvData} />}
             {previewMode === 'pdf' && <PdfViewer data={cvData} />}
