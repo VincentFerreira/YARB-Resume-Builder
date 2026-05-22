@@ -49,9 +49,8 @@ npm install
 cp .env.local.example .env.local
 # Edit .env.local and fill in your keys
 
-# 4. Start both servers
-npm run server   # LaTeX compilation server on :3001
-npm run dev      # Vite dev server on :3000
+# 4. Start both servers (Vite on :3000, LaTeX compiler on :3001)
+npm start
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
