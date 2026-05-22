@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+coverage
+.env.local
+cv_*.pdf
+cv_*.json
+*.log
+.claude
+.cursor
+.gemini
+.vscode
+.idea
+.DS_Store

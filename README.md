@@ -29,7 +29,7 @@ A web app to build, edit, and export professional resumes as PDF — powered by 
 ## Prerequisites
 
 - **Node.js** ≥ 23
-- **LaTeX distribution** with `pdflatex` (e.g. [MacTeX](https://www.tug.org/mactex/), [TeX Live](https://tug.org/texlive/))  
+- **LaTeX distribution** with `pdflatex` (e.g. [MacTeX](https://www.tug.org/mactex/), [TeX Live](https://tug.org/texlive/))
   The server expects `pdflatex` at `/Library/TeX/texbin/pdflatex` (macOS default). Override with the `PDFLATEX_PATH` environment variable for other systems.
 - An **API key** for at least one AI provider:
   - [Google AI Studio](https://aistudio.google.com/app/apikey) → Gemini
@@ -89,6 +89,44 @@ Both keys are optional — you only need the one(s) for the AI provider(s) you w
 ├── types.ts                 # TypeScript interfaces (CVData, etc.)
 └── constants.ts             # Default CV data
 ```
+
+## Running with Docker
+
+If you don't want to install Node.js or a LaTeX distribution locally, Docker handles everything.
+
+### Build the Docker image
+
+```bash
+# Build the image once
+docker build -t yarb .
+```
+
+### Run the servers
+
+If you already have a `.env.local` file configured, you can use it directly:
+
+```bash
+docker run --rm -it -p 3000:3000 -p 3001:3001 --env-file .env.local yarb
+```
+
+Otherwise, you can pass `ANTHROPIC_API_KEY` and/or `GEMINI_API_KEY`:
+
+```bash
+docker run --rm -it -p 3000:3000 -p 3001:3001 \
+  -e ANTHROPIC_API_KEY=your_anthropic_api_key \
+  -e GEMINI_API_KEY=your_gemini_api_key \
+  yarb
+```
+
+To persist saved CVs between runs, mount the `cvs` directory:
+
+```bash
+docker run --rm -it -p 3000:3000 -p 3001:3001 --env-file .env.local -v "$(pwd)/cvs:/yarb/cvs" yarb
+```
+
+### Open the application
+
+Open [http://localhost:3000](http://localhost:3000).
 
 ## Contributing
 
