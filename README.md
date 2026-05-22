@@ -30,7 +30,7 @@ A web app to build, edit, and export professional resumes as PDF — powered by 
 
 - **Node.js** ≥ 23
 - **LaTeX distribution** with `pdflatex` (e.g. [MacTeX](https://www.tug.org/mactex/), [TeX Live](https://tug.org/texlive/))  
-  The server expects `pdflatex` at `/Library/TeX/texbin/pdflatex` (macOS default). Edit `server.js` for other paths.
+  The server expects `pdflatex` at `/Library/TeX/texbin/pdflatex` (macOS default). Override with the `PDFLATEX_PATH` environment variable for other systems.
 - An **API key** for at least one AI provider:
   - [Google AI Studio](https://aistudio.google.com/app/apikey) → Gemini
   - [Anthropic Console](https://console.anthropic.com/) → Claude
