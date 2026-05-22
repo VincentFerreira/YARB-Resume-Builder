@@ -28,7 +28,7 @@ A web app to build, edit, and export professional resumes as PDF — powered by 
 
 ## Prerequisites
 
-- **Node.js** ≥ 18
+- **Node.js** ≥ 23
 - **LaTeX distribution** with `pdflatex` (e.g. [MacTeX](https://www.tug.org/mactex/), [TeX Live](https://tug.org/texlive/))  
   The server expects `pdflatex` at `/Library/TeX/texbin/pdflatex` (macOS default). Edit `server.js` for other paths.
 - An **API key** for at least one AI provider:
