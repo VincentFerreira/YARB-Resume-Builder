@@ -1,117 +1,155 @@
 # LinkedIn Feed Scraper
 
-API REST qui scrape le fil LinkedIn, score les posts par pertinence et les expose via des endpoints HTTP.
+REST API that scrapes the LinkedIn feed, scores posts by relevance, and exposes them via HTTP endpoints.
 
-## Vue d'ensemble
+## Overview
 
 ```
-POST /scrape             → lance un scrape du fil LinkedIn
-GET  /posts              → liste tous les posts sauvegardés
-GET  /posts/interesting  → posts au-dessus du seuil de pertinence
-GET  /config             → configuration active
-PUT  /config/interests   → met à jour les mots-clés d'intérêt
-POST /config/cookies     → upload un nouveau fichier de cookies
-GET  /health             → statut de l'API
+POST /scrape             → trigger a LinkedIn feed scrape
+GET  /posts              → list all saved posts
+GET  /posts/interesting  → posts above the relevance threshold
+GET  /config             → active configuration
+PUT  /config/interests   → update interest keywords
+POST /config/cookies     → upload a new cookies file
+GET  /health             → API status
 ```
 
-Le scraper utilise [Scrapling](https://github.com/D4Vinci/Scrapling) avec `StealthyFetcher` (Patchright/Chromium headless) pour contourner les protections anti-bot de LinkedIn. L'authentification se fait exclusivement par cookies de session.
+The scraper uses [Scrapling](https://github.com/D4Vinci/Scrapling) with `StealthyFetcher` (Patchright/Chromium headless) to bypass LinkedIn's anti-bot protections. Authentication is exclusively via session cookies.
 
-## Prérequis
+## Requirements
 
 - Python 3.12+
-- Chromium (installé via Patchright, voir ci-dessous)
+- Chromium (installed via Patchright, see below)
 
 ## Installation
 
 ```bash
-# 1. Créer et activer le virtualenv
+# 1. Create and activate the virtualenv
 python -m venv .venv
 source .venv/bin/activate
 
-# 2. Installer les dépendances
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Installer le navigateur Chromium (obligatoire)
+# 3. Install the Chromium browser (required)
 patchright install chromium
 ```
 
-> **Important** : sans `patchright install chromium`, tous les scrapes échouent silencieusement avec 0 posts trouvés.
+> **Important**: without `patchright install chromium`, all scrapes fail silently with 0 posts found.
 
 ## Configuration
 
-Copier `.env.example` en `.env` et adapter :
+Copy `.env.example` to `.env` and adjust:
 
 ```env
-COOKIES_FILE=cookies.json          # chemin vers le fichier de cookies
-POSTS_FILE=posts.json              # base de données locale des posts
+COOKIES_FILE=cookies.json          # path to the cookies file
+POSTS_FILE=posts.json              # local posts database
 INTEREST_KEYWORDS=QA,testing,quality assurance,automation,selenium,pytest
-RELEVANCE_THRESHOLD=2.0            # score minimum pour /posts/interesting
-MAX_SCROLL_ATTEMPTS=3              # nombre de passes de scraping
-HEADLESS=true                      # false pour voir le navigateur
+RELEVANCE_THRESHOLD=2.0            # minimum score for /posts/interesting
+MAX_SCROLL_ATTEMPTS=3              # number of scraping passes
+HEADLESS=true                      # false to show the browser
 ```
 
-Les paramètres peuvent aussi être surchargés via `config_override.json` (créé automatiquement par `PUT /config/interests`).
+Settings can also be overridden via `config_override.json` (automatically created by `PUT /config/interests`).
 
-## Authentification par cookies
+## Cookie-based Authentication
 
-Le scraper utilise les cookies de session LinkedIn. **Ils doivent être renouvelés régulièrement** (le cookie `__cf_bm` de Cloudflare expire en ~30 minutes, et la session complète en quelques semaines).
+The scraper uses LinkedIn session cookies. **They must be renewed regularly** (Cloudflare's `__cf_bm` cookie expires in ~30 minutes, and the full session expires after a few weeks).
 
-### Obtenir des cookies valides
+### Getting valid cookies
 
-1. Se connecter à LinkedIn dans Chrome/Firefox
-2. Installer l'extension **Cookie Editor** ([Chrome](https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm) / [Firefox](https://addons.mozilla.org/fr/firefox/addon/cookie-editor/))
-3. Sur `linkedin.com`, ouvrir Cookie Editor → **Export → Export as JSON**
-4. Sauvegarder le fichier en `cookies.json` à la racine du projet
+1. Log into LinkedIn in Chrome/Firefox
+2. Install the **Cookie Editor** extension ([Chrome](https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm) / [Firefox](https://addons.mozilla.org/en/firefox/addon/cookie-editor/))
+3. On `linkedin.com`, open Cookie Editor → **Export → Export as JSON**
+4. Save the file as `cookies.json` at the project root
 
-Le cookie critique est `li_at` (token de session). Les cookies `__cf_bm` et `lidc` expirent rapidement mais restent utiles tant qu'ils sont envoyés.
+The critical cookie is `li_at` (session token). The `__cf_bm` and `lidc` cookies expire quickly but remain useful as long as they are sent.
 
-### Vérifier la validité des cookies
+### Checking cookie validity
 
-Un scrape qui retourne `error: "LinkedIn session expired or cookies invalid."` signifie que les cookies ne sont plus acceptés. Renouveler en suivant les étapes ci-dessus.
+A scrape returning `error: "LinkedIn session expired or cookies invalid."` means the cookies are no longer accepted. Renew them by following the steps above.
 
-**Indicateurs de cookies expirés dans les logs :**
+**Expired cookie indicators in logs:**
 ```
 Fetched (302) <GET https://www.linkedin.com/feed/>
 Fetched (307) <GET https://www.linkedin.com/uas/login?...>
 Fetched (200) <GET https://www.linkedin.com/login/...>
 ```
 
-**Indicateurs de cookies valides :**
+**Valid cookie indicators:**
 ```
 Fetched (307) <GET https://www.linkedin.com/feed/>
 Fetched (200) <GET https://www.linkedin.com/feed/>
 ```
 
-### Upload via API (sans redémarrage)
+### Upload via API (without restarting)
 
 ```bash
 curl -X POST http://localhost:8000/config/cookies \
-  -F "file=@/chemin/vers/nouveaux_cookies.json"
+  -F "file=@/path/to/new_cookies.json"
 ```
 
-## Démarrage
+## Starting the Server
 
 ```bash
 python main.py
 ```
 
-L'API écoute sur `http://0.0.0.0:8000`. Documentation Swagger interactive : `http://localhost:8000/docs`.
+The API listens on `http://0.0.0.0:8000`. Interactive Swagger documentation: `http://localhost:8000/docs`.
 
-## Utilisation
+## MCP Server (Claude Code integration)
 
-### Lancer un scrape
+The project includes an MCP (Model Context Protocol) server that lets Claude Code call the scraper directly as tools — no need to run the REST API.
+
+### Setup
+
+The server is registered in `.mcp.json` at the project root. When you open this project in Claude Code, it will detect the file and ask you to approve the `linkedin-scraper` server. Approve it once, and the tools become available in every session.
+
+### Available tools
+
+| Tool | Arguments | Description |
+|------|-----------|-------------|
+| `scrape_feed` | `scroll_attempts?` | Trigger a LinkedIn scrape, returns scored posts |
+| `get_posts` | `limit=50`, `min_score=0.0` | Read posts from the local cache |
+| `get_interesting_posts` | `threshold?` | Posts at or above the relevance threshold |
+| `update_interests` | `keywords`, `threshold?` | Update keywords + re-score all stored posts |
+| `get_config` | — | View the active configuration |
+
+### Usage examples (from a Claude Code session)
+
+```
+Scrape LinkedIn with 2 passes and show me the most relevant posts.
+→ calls scrape_feed(scroll_attempts=2), then get_interesting_posts()
+
+Update my keywords to ["Python", "testing", "CI/CD"] with a threshold of 3.
+→ calls update_interests(keywords=["Python", "testing", "CI/CD"], threshold=3.0)
+```
+
+### Manual launch (for testing)
 
 ```bash
-# Avec le nombre de passes par défaut (MAX_SCROLL_ATTEMPTS)
+# The server communicates via stdio — useful to verify it starts cleanly
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}' \
+  | .venv/bin/python mcp_server.py
+```
+
+> **Note**: `.mcp.json` contains absolute paths. If you clone the project on a different machine, update the `command` and `cwd` fields, or regenerate the file.
+
+## Usage
+
+### Running a scrape
+
+```bash
+# With the default number of passes (MAX_SCROLL_ATTEMPTS)
 curl -X POST http://localhost:8000/scrape
 
-# Avec un nombre de passes personnalisé
+# With a custom number of passes
 curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
   -d '{"scroll_attempts": 5}'
 ```
 
-Réponse :
+Response:
 ```json
 {
   "posts_found": 6,
@@ -121,25 +159,25 @@ Réponse :
 }
 ```
 
-### Lire les posts
+### Reading posts
 
 ```bash
-# Tous les posts, triés par score décroissant
+# All posts, sorted by descending score
 curl "http://localhost:8000/posts?limit=50&offset=0"
 
-# Uniquement les posts pertinents (au-dessus du seuil)
+# Only relevant posts (above the threshold)
 curl "http://localhost:8000/posts/interesting"
 
-# Avec un seuil personnalisé
+# With a custom threshold
 curl "http://localhost:8000/posts/interesting?threshold=5.0"
 ```
 
-Exemple de post retourné :
+Example post returned:
 ```json
 {
   "urn": "urn:li:activity:7468153814831996928",
   "author": "Julian LUNEAU 🧬",
-  "text": "La France vient de signer un deal massif...",
+  "text": "France just signed a massive deal...",
   "reactions": 1,
   "scraped_at": "2026-06-04T19:26:18Z",
   "score": 0.0,
@@ -148,77 +186,80 @@ Exemple de post retourné :
 }
 ```
 
-> **Note** : si aucun commentaire n'est rendu sur la page pour un post donné, l'URN sera du format `urn:li:post:hash:{hex}` et l'URL sera vide. L'URL est disponible dès qu'un vrai URN LinkedIn est récupéré lors d'un scrape ultérieur.
+> **Note**: if no comments are rendered on the page for a given post, the URN will be in the format `urn:li:post:hash:{hex}` and the URL will be empty. The URL becomes available once a real LinkedIn URN is retrieved in a subsequent scrape.
 
-### Gérer les mots-clés d'intérêt
+### Managing interest keywords
 
 ```bash
-# Voir la config actuelle
+# View the current config
 curl http://localhost:8000/config
 
-# Mettre à jour les mots-clés (re-score tous les posts existants)
+# Update keywords (re-scores all existing posts)
 curl -X PUT http://localhost:8000/config/interests \
   -H "Content-Type: application/json" \
-  -d '{"keywords": ["QA", "automatisation", "Playwright", "pytest"], "threshold": 3.0}'
+  -d '{"keywords": ["QA", "automation", "Playwright", "pytest"], "threshold": 3.0}'
 ```
 
-## Algorithme de scoring
+## Scoring Algorithm
 
-Chaque post reçoit un score basé sur la fréquence et le poids des mots-clés trouvés dans son texte :
+Each post receives a score based on the frequency and weight of keywords found in its text:
 
-- Chaque occurrence d'un mot-clé ajoute `nombre_de_mots_dans_le_mot_clé` points
-- Un mot-clé multi-mots (ex : "quality assurance") vaut plus qu'un mot seul
-- Les posts sont triés par score décroissant
-- `score = 0` si aucun mot-clé ne correspond
+- Each keyword occurrence adds `number_of_words_in_keyword` points
+- A multi-word keyword (e.g. "quality assurance") is worth more than a single word
+- Posts are sorted by descending score
+- `score = 0` if no keyword matches
 
-Exemple : le texte contient "testing" (×2) et "quality assurance" (×1) :
-- "testing" (1 mot) × 2 occurrences = 2 pts
-- "quality assurance" (2 mots) × 1 occurrence = 2 pts
-- **score total = 4.0** → apparaît dans `/posts/interesting` avec `RELEVANCE_THRESHOLD=2.0`
+Example: the text contains "testing" (×2) and "quality assurance" (×1):
+- "testing" (1 word) × 2 occurrences = 2 pts
+- "quality assurance" (2 words) × 1 occurrence = 2 pts
+- **total score = 4.0** → appears in `/posts/interesting` with `RELEVANCE_THRESHOLD=2.0`
 
-## Identifiants des posts (URN)
+## Post Identifiers (URN)
 
-LinkedIn a migré son DOM en 2025 et n'expose plus directement les URNs d'activité dans les containers de posts. Le scraper utilise une stratégie hybride :
+LinkedIn migrated its DOM in 2025 and no longer directly exposes activity URNs in post containers. The scraper uses a hybrid strategy:
 
-1. **URN réel** (`urn:li:activity:ID`) : extrait depuis les métadonnées de commentaires si ceux-ci sont rendus dans la page. Permet de construire l'URL directe du post.
-2. **URN hash** (`urn:li:post:hash:HEX`) : généré depuis `MD5(auteur + texte[:200])` quand aucun URN réel n'est disponible. Stable entre les scrapes pour le même contenu, mais sans URL LinkedIn.
+1. **Real URN** (`urn:li:activity:ID`): extracted from comment metadata when comments are rendered on the page. Allows building the direct post URL.
+2. **Hash URN** (`urn:li:post:hash:HEX`): generated from `MD5(author + text[:200])` when no real URN is available. Stable across scrapes for the same content, but without a LinkedIn URL.
 
-## Persistance
+## Persistence
 
-Les posts sont sauvegardés dans `posts.json` (chemin configurable via `POSTS_FILE`). Les re-scrapes upsertent les posts existants avec déduplication par URN. Les scores sont recalculés à chaque `PUT /config/interests`.
+Posts are saved to `posts.json` (path configurable via `POSTS_FILE`). Re-scrapes upsert existing posts with URN-based deduplication. Scores are recalculated on every `PUT /config/interests`.
 
-## Structure du projet
+## Project Structure
 
 ```
 linkedin_scraper/
-├── main.py              # point d'entrée uvicorn
+├── main.py              # uvicorn entry point (REST API)
+├── scrape.py            # standalone CLI scraper
+├── mcp_server.py        # MCP server (Claude Code integration)
 ├── app/
-│   ├── api.py           # routes FastAPI
+│   ├── api.py           # FastAPI routes
 │   ├── config.py        # Settings (pydantic-settings + .env)
-│   ├── cookies.py       # chargement et conversion des cookies
-│   ├── models.py        # modèles Pydantic
-│   ├── scraper.py       # logique de scraping (Scrapling/Patchright)
-│   ├── scorer.py        # scoring par mots-clés
-│   └── storage.py       # persistance JSON
-├── cookies.json         # cookies LinkedIn (à créer, ignoré par git)
-├── posts.json           # base de données locale (créé automatiquement)
-├── .env                 # configuration locale (à créer depuis .env.example)
+│   ├── cookies.py       # cookie loading and conversion
+│   ├── models.py        # Pydantic models
+│   ├── scraper.py       # scraping logic (Scrapling/Patchright)
+│   ├── scorer.py        # keyword scoring
+│   └── storage.py       # JSON persistence
+├── .mcp.json            # MCP server registration for Claude Code
+├── cookies.json         # LinkedIn cookies (to be created, git-ignored)
+├── posts.json           # local database (created automatically)
+├── .env                 # local configuration (to be created from .env.example)
 └── requirements.txt
 ```
 
-## Dépannage
+## Troubleshooting
 
-| Symptôme | Cause probable | Solution |
-|----------|---------------|----------|
-| `error: "LinkedIn session expired..."` | Cookies expirés ou invalides | Ré-exporter les cookies via Cookie Editor |
-| `posts_found: 0` sans erreur, durée ~0.3s | Chromium non installé | `patchright install chromium` |
-| `posts_found: 0` sans erreur, durée ~8s | DOM LinkedIn changé ou cookies rejetés | Vérifier les logs serveur |
-| Posts avec `url: ""` | URN non disponible (pas de commentaires visibles) | Normal — l'URN sera résolu au prochain scrape si des commentaires apparaissent |
-| Doublons d'un même post | Post scrapé avec URN hash puis URN réel sur deux passes | Connu — se résout en ré-scrappant (l'upsert consolidera) |
-| Port 8000 déjà utilisé | Instance déjà démarrée | `lsof -i :8000` puis `kill <PID>` |
+| Symptom | Likely Cause | Solution |
+|---------|-------------|---------|
+| `error: "LinkedIn session expired..."` | Expired or invalid cookies | Re-export cookies via Cookie Editor |
+| `posts_found: 0` without error, duration ~0.3s | Chromium not installed | `patchright install chromium` |
+| `posts_found: 0` without error, duration ~8s | LinkedIn DOM changed or cookies rejected | Check server logs |
+| Posts with `url: ""` | URN not available (no visible comments) | Normal — the URN will be resolved on the next scrape if comments appear |
+| Duplicates of the same post | Post scraped with hash URN then real URN on two passes | Known — resolved by re-scraping (upsert will consolidate) |
+| Port 8000 already in use | Instance already running | `lsof -i :8000` then `kill <PID>` |
 
-## Notes techniques
+## Technical Notes
 
-- Le champ `sameSite` est **intentionnellement omis** lors de la conversion des cookies. Playwright/Patchright rejette les cookies avec `sameSite="None"` sans `secure=True`, ce qui cause des échecs d'authentification silencieux. Sans ce champ, le navigateur envoie tous les cookies correctement.
-- Chaque passe de scrape (`scroll_attempts`) est un chargement complet de la page avec un délai croissant (5s, 7s, 9s, …) pour laisser le fil se charger.
-- LinkedIn rend entre 3 et 8 posts par chargement de page selon le contexte de session et la vitesse réseau.
+- The `sameSite` field is **intentionally omitted** during cookie conversion. Playwright/Patchright rejects cookies with `sameSite="None"` without `secure=True`, which causes silent authentication failures. Without this field, the browser sends all cookies correctly.
+- Each scraping pass (`scroll_attempts`) is a full page load with an increasing delay (5s, 7s, 9s, …) to let the feed load.
+- LinkedIn renders between 3 and 8 posts per page load depending on the session context and network speed.

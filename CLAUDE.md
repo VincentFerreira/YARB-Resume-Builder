@@ -11,6 +11,7 @@ REST API that scrapes the LinkedIn feed, scores posts by relevance, and exposes 
 - Python 3.12+
 - FastAPI + Uvicorn, Pydantic-settings + python-dotenv
 - `scrapling[all]>=0.4.3` (StealthyFetcher with Patchright/Chromium)
+- `mcp>=1.0.0` (FastMCP — MCP server for Claude Code integration)
 - No Docker, no test suite yet
 
 ## Commands
@@ -21,13 +22,17 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 patchright install chromium          # required — without this, scrapes return 0 posts silently
 
-# Run the API
+# Run the REST API
 python main.py                       # listens on http://0.0.0.0:8000
 # Swagger UI: http://localhost:8000/docs
 
 # CLI scraper (bypasses the API)
 python scrape.py                     # uses config defaults
 python scrape.py --attempts 1 --keywords "QA,pytest" --min-score 2 --json
+
+# Smoke-test the MCP server (expects a JSON-RPC response on stdout)
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}' \
+  | .venv/bin/python mcp_server.py
 ```
 
 ## Actual project structure
@@ -35,6 +40,7 @@ python scrape.py --attempts 1 --keywords "QA,pytest" --min-score 2 --json
 ```
 main.py              # uvicorn entry point (runs app.api:app)
 scrape.py            # standalone CLI scraper (no server needed)
+mcp_server.py        # MCP server — exposes scraper as tools for Claude Code (stdio transport)
 app/
   api.py             # ALL FastAPI routes + lifespan (singletons initialized here)
   config.py          # Settings (pydantic-settings), save_override(), get_settings()
@@ -43,6 +49,7 @@ app/
   scraper.py         # LinkedInScraper, _extract_posts(), AuthenticationError
   scorer.py          # score_post() and score_posts() — pure functions
   storage.py         # PostStorage — JSON file with upsert and dedup
+.mcp.json            # MCP server registration for Claude Code (contains absolute paths)
 cookies.json         # LinkedIn session cookies (git-ignored, must be created manually)
 posts.json           # persisted posts (git-ignored, created automatically)
 config_override.json # runtime config overrides written by PUT /config/interests (git-ignored)
@@ -55,7 +62,9 @@ config_override.json # runtime config overrides written by PUT /config/interests
 
 `POST /scrape` runs `LinkedInScraper.scrape()` in a thread via `loop.run_in_executor` (Patchright is synchronous). A `_scrape_lock` prevents concurrent scrapes (returns 409 if already running).
 
-**Config layering**: `.env` → `config_override.json` → runtime. `PUT /config/interests` writes to `config_override.json` and calls `get_settings.cache_clear()` to bust the `@lru_cache`.
+**MCP server** (`mcp_server.py`) mirrors the same singleton pattern (`_settings`, `_storage`, `_scraper`, `_scrape_lock`) but at module level. Uses `threading.Lock` (not asyncio) because `scrape_feed` dispatches to a real OS thread via `anyio.to_thread.run_sync`. The other four tools (`get_posts`, `get_interesting_posts`, `update_interests`, `get_config`) are plain `def` — they complete in milliseconds. Registered via `.mcp.json`; Claude Code spawns it as a stdio subprocess.
+
+**Config layering**: `.env` → `config_override.json` → runtime. `PUT /config/interests` (and `update_interests` in the MCP server) write to `config_override.json` and call `get_settings.cache_clear()` to bust the `@lru_cache`.
 
 **Scoring**: `score_post(post, keywords) -> (float, list[str])` — pure function. Each keyword occurrence adds `len(keyword.split())` points (multi-word keywords worth more). Applied at scrape time and re-applied on every `PUT /config/interests`.
 
@@ -74,6 +83,8 @@ config_override.json # runtime config overrides written by PUT /config/interests
 - **Never commit** `cookies.json`, `posts.json`, `config_override.json`, `.env`
 - **Do not replace the scraping engine**: Scrapling/StealthyFetcher is intentional for bypassing LinkedIn anti-bot protections — do not migrate to requests/httpx/aiohttp
 - **Storage stays file-based** (JSON) unless explicitly requested otherwise
+- **MCP server registration belongs in `.mcp.json`**, not in `.claude/settings.json` (which does not accept a `mcpServers` key)
+- **`.mcp.json` uses absolute paths** — update `command` and `cwd` if the project moves or is cloned on a new machine
 
 ## Cookie management
 

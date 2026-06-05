@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(.venv/bin/python -c ' *)"
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(/home/linkedin_scraper/.venv/bin/pip show *)",
+      "mcp__linkedin-scraper__scrape_feed"
     ]
   }
 }
