@@ -1,0 +1,8 @@
+scrapling[all]>=0.4.3
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-dotenv
+python-multipart
+pytest

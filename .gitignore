@@ -1,0 +1,10 @@
+.env
+cookies.json
+posts.json
+config_override.json
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
