@@ -14,14 +14,14 @@ from pathlib import Path
 import pytest
 
 COOKIES_FILE = Path(__file__).parent.parent / "cookies.json"
-# Nombre de pas de scroll dans la page (chaque pas charge ~5-10 nouveaux posts).
-# 5 pas × ~2.5s de pause = ~12s de scroll + ~15s de chargement initial = ~30s total.
+# Number of scroll passes per scrape (each pass loads ~5-10 new posts).
+# 5 passes × ~2.5s pause = ~12s scrolling + ~15s initial load = ~30s total.
 SCROLL_ATTEMPTS = 7
 MIN_POSTS = 20
 
 pytestmark = pytest.mark.skipif(
     not COOKIES_FILE.exists(),
-    reason="cookies.json introuvable — exportez vos cookies LinkedIn avec l'extension Cookie Editor",
+    reason="cookies.json not found — export your LinkedIn cookies with the Cookie Editor extension",
 )
 
 
@@ -43,9 +43,9 @@ def scraped_posts():
         posts = LinkedInScraper(settings).scrape()
     except AuthenticationError as exc:
         pytest.fail(
-            f"Authentification LinkedIn échouée — cookies expirés ou invalides.\n"
-            f"→ Ré-exportez via l'extension Cookie Editor et relancez.\n"
-            f"Détail : {exc}"
+            f"LinkedIn authentication failed — cookies are expired or invalid.\n"
+            f"→ Re-export via the Cookie Editor extension and retry.\n"
+            f"Detail: {exc}"
         )
     return posts
 
@@ -55,41 +55,41 @@ def scraped_posts():
 # ---------------------------------------------------------------------------
 
 def test_cookies_contain_li_at():
-    """Le cookie de session li_at doit être présent dans cookies.json."""
+    """The li_at session cookie must be present in cookies.json."""
     cookies = json.loads(COOKIES_FILE.read_text())
     names = {c["name"] for c in cookies}
     assert "li_at" in names, (
-        "Cookie 'li_at' absent — la session LinkedIn sera invalide. "
-        "Exportez vos cookies avec Cookie Editor en étant connecté."
+        "Cookie 'li_at' missing — the LinkedIn session will be invalid. "
+        "Export your cookies with Cookie Editor while logged in."
     )
 
 
 def test_scraper_returns_enough_posts(scraped_posts):
-    """Le scraper doit retourner au moins MIN_POSTS posts sans lever d'erreur d'auth."""
+    """The scraper must return at least MIN_POSTS posts without raising an auth error."""
     assert scraped_posts, (
-        "Aucun post retourné — vérifiez la connexion réseau et la validité des cookies."
+        "No posts returned — check network connectivity and cookie validity."
     )
     assert len(scraped_posts) >= MIN_POSTS, (
-        f"{len(scraped_posts)} posts retournés, attendu >= {MIN_POSTS}. "
-        f"Augmentez SCROLL_ATTEMPTS (actuellement {SCROLL_ATTEMPTS}) "
-        f"— chaque pas de scroll ajoute ~2.5s et ~5-10 posts."
+        f"{len(scraped_posts)} posts returned, expected >= {MIN_POSTS}. "
+        f"Increase SCROLL_ATTEMPTS (currently {SCROLL_ATTEMPTS}) "
+        f"— each scroll pass adds ~2.5s and ~5-10 posts."
     )
 
 
 def test_posts_have_valid_structure(scraped_posts):
-    """Chaque post doit avoir un URN valide, un auteur, un texte et un timestamp."""
+    """Each post must have a valid URN, author, text, and timestamp."""
     for post in scraped_posts:
-        assert post.urn, f"Post sans URN : {post}"
-        assert post.urn.startswith("urn:li:"), f"URN mal formé : {post.urn!r}"
-        assert post.text.strip(), f"Post sans texte : {post.urn}"
-        assert post.author, f"Post sans auteur : {post.urn}"
-        assert post.scraped_at is not None, f"Post sans timestamp : {post.urn}"
+        assert post.urn, f"Post without URN: {post}"
+        assert post.urn.startswith("urn:li:"), f"Malformed URN: {post.urn!r}"
+        assert post.text.strip(), f"Post without text: {post.urn}"
+        assert post.author, f"Post without author: {post.urn}"
+        assert post.scraped_at is not None, f"Post without timestamp: {post.urn}"
 
 
 def test_posts_have_no_duplicate_urns(scraped_posts):
-    """La déduplication par URN doit garantir l'unicité des posts retournés."""
+    """URN-based deduplication must guarantee unique posts in the result."""
     urns = [p.urn for p in scraped_posts]
     assert len(urns) == len(set(urns)), (
-        f"{len(urns) - len(set(urns))} URN(s) en doublon détectés — "
-        "la déduplication dans scrape() ne fonctionne pas correctement."
+        f"{len(urns) - len(set(urns))} duplicate URN(s) detected — "
+        "deduplication in scrape() is not working correctly."
     )

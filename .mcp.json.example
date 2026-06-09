@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "linkedin-scraper": {
+      "command": "/path/to/project/.venv/bin/python",
+      "args": ["/path/to/project/mcp_server.py"],
+      "cwd": "/path/to/project"
+    }
+  }
+}

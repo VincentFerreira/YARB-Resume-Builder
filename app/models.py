@@ -8,6 +8,7 @@ class Post(BaseModel):
     text: str
     reactions: int = 0
     scraped_at: datetime
+    posted_at: datetime | None = None
     score: float = 0.0
     matched_keywords: list[str] = []
     url: str = ""

@@ -1,7 +1,7 @@
 import hashlib
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from scrapling.fetchers import StealthyFetcher
 
@@ -24,6 +24,40 @@ _MENU_LABEL_RE = re.compile(
     r"(?:menu de commandes pour le post de|Open control menu for post by)\s+(.+)$",
     re.IGNORECASE,
 )
+
+
+# Matches LinkedIn's relative post age text, e.g. "2 h •", "3 j •", "1 sem. •".
+# The bullet separator (•/·) must follow the unit — it distinguishes the timestamp
+# span from other short texts like the connection-degree badge "• 1er".
+_RELATIVE_AGE_RE = re.compile(r"(\d+)\s*([a-zà-ÿ]+)\.?\s*[•·]", re.IGNORECASE)
+
+# Ordered so ambiguous single-letter prefixes ("m", "s") are tried AFTER the
+# longer, more specific ones ("mo"/"mois" before "m"; "sem" before "s").
+_UNIT_TO_DAYS: tuple[tuple[str, float], ...] = (
+    ("a", 365.0),    # an, ans, années, année
+    ("y", 365.0),    # year, years, yr
+    ("mo", 30.0),    # mois, month, months, mo   — before bare "m"
+    ("sem", 7.0),    # semaine, semaines, sem     — before bare "s"
+    ("w", 7.0),      # week, weeks, w
+    ("j", 1.0),      # jour, jours, j
+    ("d", 1.0),      # day, days, d
+    ("h", 1 / 24),   # heure, heures, h, hour, hours, hr, hrs
+    ("m", 1 / 1440), # minute, minutes, min, mins, m   — after "mo"
+    ("s", 1 / 86400), # seconde, secondes, sec, secs, s — after "sem"
+)
+
+
+def _parse_relative_age(text: str, now: datetime) -> datetime | None:
+    """Convert LinkedIn's relative post age (e.g. '2 h •', '3 j •') to an
+    absolute UTC datetime by subtracting the interval from `now`."""
+    m = _RELATIVE_AGE_RE.search(text)
+    if not m:
+        return None
+    amount, unit = int(m.group(1)), m.group(2).lower()
+    for prefix, days in _UNIT_TO_DAYS:
+        if unit.startswith(prefix):
+            return now - timedelta(days=amount * days)
+    return None
 
 
 class AuthenticationError(Exception):
@@ -116,6 +150,10 @@ def _extract_posts(page) -> list[Post]:
 
             # --- Stable ID ---
             # Try to get the real activity URN (only available when comments are rendered).
+            # Prefer attributes scoped to *this* post (its own element, then its
+            # container ancestor) — an unbounded forward search can wander into a
+            # neighbouring post's subtree and return the wrong URN, which then
+            # produces an "Open on LinkedIn" link pointing at the wrong post.
             urn = ""
             legacy_urn = (
                 el.attrib.get("data-urn", "") or el.attrib.get("data-id", "")
@@ -123,6 +161,17 @@ def _extract_posts(page) -> list[Post]:
             if legacy_urn and "urn:li:activity" in legacy_urn:
                 urn = legacy_urn
             else:
+                container_urns = el.xpath(
+                    "ancestor::*[@data-urn[contains(., 'urn:li:activity')] "
+                    "or @data-id[contains(., 'urn:li:activity')]][1]"
+                )
+                if container_urns:
+                    container = container_urns[0]
+                    container_urn = container.attrib.get("data-urn", "") or container.attrib.get("data-id", "")
+                    if "urn:li:activity" in container_urn:
+                        urn = container_urn
+
+            if not urn:
                 urn_candidates = el.xpath(
                     "following::*[contains(@componentkey, 'urn:li:activity')][1]/@componentkey"
                 )
@@ -169,12 +218,27 @@ def _extract_posts(page) -> list[Post]:
             else:
                 url = ""
 
+            # --- Publish date ---
+            # LinkedIn shows a relative age next to the author (e.g. "2 h •",
+            # "3 j • Modifié •") instead of an exact timestamp. Parse the
+            # nearest preceding bullet-containing span to recover an absolute UTC
+            # datetime; fall back to None when parsing fails or the span is absent.
+            posted_at: datetime | None = None
+            age_candidates = el.xpath(
+                "preceding::span[contains(text(), '•') or contains(text(), '·')][position() <= 5]/text()"
+            )
+            for candidate in (age_candidates if isinstance(age_candidates, list) else [age_candidates]):
+                posted_at = _parse_relative_age(str(candidate), now)
+                if posted_at:
+                    break
+
             posts.append(Post(
                 urn=urn,
                 author=author,
                 text=text,
                 reactions=reactions,
                 scraped_at=now,
+                posted_at=posted_at,
                 url=url,
             ))
         except Exception as exc:
@@ -190,9 +254,14 @@ _JS_EXTRACT_POSTS = r"""
 () => {
     const AUTHOR_RE = /(?:menu de commandes pour le post de|Open control menu for post by)\s+(.+)$/i;
     const REACTION_RE = /^(\d[\d\s,\.]*?)\s*(?:réaction|reaction|like)/i;
+    // Matches relative age spans like "2 h •", "3 j •", "1 sem. •" — the
+    // trailing bullet is what distinguishes them from connection-degree badges.
+    const TIME_RE = /\d+\s*[a-zà-ÿ]+\s*[•·]/i;
 
     const authorBtns = Array.from(document.querySelectorAll('button[aria-label]'))
         .filter(b => AUTHOR_RE.test(b.getAttribute('aria-label')));
+    const timeSpans = Array.from(document.querySelectorAll('span'))
+        .filter(s => TIME_RE.test((s.textContent || '').trim()));
 
     const results = [];
     for (const el of document.querySelectorAll('[componentkey^="feed-commentary_"]')) {
@@ -210,8 +279,18 @@ _JS_EXTRACT_POSTS = r"""
             }
         }
 
-        // Real activity URN from a following sibling's componentkey, or hash fallback
+        // Real activity URN — prefer attributes scoped to *this* post (its own
+        // element, then its container ancestor). Falling back straight to a
+        // forward sibling search can wander into a neighbouring post's subtree
+        // and grab the wrong URN, producing an "Open on LinkedIn" link that
+        // points at a different post than the one shown.
         let urn = el.getAttribute('data-urn') || el.getAttribute('data-id') || '';
+        if (!urn || !urn.includes('urn:li:activity')) {
+            const container = el.closest('[data-urn*="urn:li:activity"], [data-id*="urn:li:activity"]');
+            if (container) {
+                urn = container.getAttribute('data-urn') || container.getAttribute('data-id') || '';
+            }
+        }
         if (!urn || !urn.includes('urn:li:activity')) {
             for (let n = el.nextElementSibling, i = 0; n && i < 10; n = n.nextElementSibling, i++) {
                 const m = (n.getAttribute('componentkey') || '').match(/(urn:li:activity:\d+)/);
@@ -232,8 +311,19 @@ _JS_EXTRACT_POSTS = r"""
             if (m) { reactions = parseInt(m[1].replace(/[\s,\.]/g, ''), 10) || 0; break; }
         }
 
+        // Nearest preceding span whose text matches the relative-age pattern —
+        // same direction & logic as the author-button search above.
+        let ageText = '';
+        for (let i = timeSpans.length - 1; i >= 0; i--) {
+            if (timeSpans[i].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) {
+                ageText = (timeSpans[i].textContent || '').trim();
+                break;
+            }
+        }
+
         results.push({
-            urn, author, text, reactions,
+            urn, author, text, reactions, ageText,
+            componentkey: el.getAttribute('componentkey') || '',
             url: urn.includes('urn:li:activity:')
                 ? 'https://www.linkedin.com/feed/update/' + urn + '/' : '',
         });
@@ -243,18 +333,103 @@ _JS_EXTRACT_POSTS = r"""
 """
 
 
-def _extract_posts_js(page, now: datetime) -> list[Post]:
-    """Extract post data via JS evaluation — returns only the fields we need, no full HTML."""
+def _extract_posts_js(page, now: datetime) -> list[tuple[Post, str]]:
+    """Extract post data via JS evaluation — returns only the fields we need, no full HTML.
+
+    Returns `(Post, componentkey)` pairs — the componentkey lets the caller
+    locate this exact post's "more options" button later, to resolve a real
+    permalink when the DOM-derived `url` came up empty (see _resolve_post_url).
+    """
     try:
         raw = page.evaluate(_JS_EXTRACT_POSTS)
     except Exception as exc:
         logger.warning("JS extraction failed: %s", exc)
         return []
     return [
-        Post(urn=p["urn"], author=p["author"], text=p["text"],
-             reactions=p.get("reactions", 0), scraped_at=now, url=p.get("url", ""))
+        (
+            Post(urn=p["urn"], author=p["author"], text=p["text"],
+                 reactions=p.get("reactions", 0), scraped_at=now,
+                 posted_at=_parse_relative_age(p.get("ageText", ""), now),
+                 url=p.get("url", "")),
+            p.get("componentkey", ""),
+        )
         for p in (raw or []) if p.get("text")
     ]
+
+
+_COPY_LINK_LOCATOR = (
+    '[role="menuitem"]:has-text("Copier le lien vers le post"), '
+    '[role="menuitem"]:has-text("Copy link to post")'
+)
+
+
+def _resolve_post_url(page, componentkey: str) -> str:
+    """Resolve a working permalink for a post via its "more options" → "Copy
+    link to post" menu, reading the result back from the clipboard.
+
+    LinkedIn's current feed DOM almost never exposes a real `urn:li:activity`
+    id in its attributes (see the comments in _extract_posts/_extract_posts_js)
+    — every post falls back to a content-hash URN with no derivable URL. The
+    share menu is the one place LinkedIn still hands out a canonical permalink
+    (e.g. https://www.linkedin.com/posts/<author-slug>_..._-share-<id>-<rand>/),
+    so this is the reliable way to guarantee an "Open on LinkedIn" link.
+
+    Scoped via the post's own `componentkey` (XPath `preceding::` from that
+    exact element) rather than matching on author name, so two posts by the
+    same author can't resolve to each other's link.
+    """
+    if not componentkey:
+        return ""
+    try:
+        menu_btn = page.locator(
+            f'xpath=//*[@componentkey="{componentkey}"]'
+            "/preceding::button[contains(@aria-label, 'menu de commandes pour le post de') "
+            "or contains(@aria-label, 'Open control menu for post by')][1]"
+        ).first
+        if menu_btn.count() == 0:
+            return ""
+
+        menu_btn.scroll_into_view_if_needed(timeout=5000)
+        menu_btn.click(timeout=5000)
+        page.wait_for_timeout(400)
+
+        copy_item = page.locator(_COPY_LINK_LOCATOR).first
+        if copy_item.count() == 0:
+            page.keyboard.press("Escape")
+            return ""
+
+        copy_item.click(timeout=5000)
+        page.wait_for_timeout(400)
+        link = page.evaluate("() => navigator.clipboard.readText()")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(200)
+
+        if link and "linkedin.com" in link:
+            return link.split("?")[0]  # drop utm_*/rcm tracking params
+    except Exception as exc:
+        logger.debug("Link resolution failed for componentkey %s: %s", componentkey, exc)
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
+    return ""
+
+
+def _merge_resolved(accumulated: dict[str, Post], extractions: list[tuple[Post, str]], page) -> None:
+    """Merge freshly-extracted posts into `accumulated`, resolving a real
+    permalink for any post whose DOM-derived `url` is empty. Resolution runs
+    at most once per post — a previously-resolved url is carried forward when
+    the same post is re-extracted on a later scroll step."""
+    for post, componentkey in extractions:
+        if not post.url:
+            prior = accumulated.get(post.urn)
+            if prior and prior.url:
+                post = post.model_copy(update={"url": prior.url})
+            else:
+                resolved = _resolve_post_url(page, componentkey)
+                if resolved:
+                    post = post.model_copy(update={"url": resolved})
+        accumulated[post.urn] = post
 
 
 class LinkedInScraper:
@@ -275,6 +450,13 @@ class LinkedInScraper:
         now = datetime.now(tz=timezone.utc)
 
         def scroll_and_collect(page) -> None:
+            # Needed to read back the permalink that LinkedIn's "Copy link to
+            # post" menu item writes to the clipboard (see _resolve_post_url).
+            try:
+                page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+            except Exception:
+                pass
+
             # LinkedIn is a React SPA — wait for the first posts to render.
             try:
                 page.wait_for_selector(
@@ -285,8 +467,7 @@ class LinkedInScraper:
                 logger.warning("Feed posts not visible after 20s — page may not have loaded")
                 return
 
-            for post in _extract_posts_js(page, now):
-                accumulated[post.urn] = post
+            _merge_resolved(accumulated, _extract_posts_js(page, now), page)
             logger.info("Initial extraction: %d posts", len(accumulated))
 
             consecutive_empty = 0
@@ -321,8 +502,7 @@ class LinkedInScraper:
                 except Exception:
                     pass  # timeout ≠ exhausted; the feed may just be slow
 
-                for post in _extract_posts_js(page, now):
-                    accumulated[post.urn] = post
+                _merge_resolved(accumulated, _extract_posts_js(page, now), page)
 
                 gained = len(accumulated) - prev_count
                 logger.info("Scroll %d/%d — %d posts total (+%d)", step + 1, max_scrolls, len(accumulated), gained)
@@ -334,6 +514,12 @@ class LinkedInScraper:
                         break
                 else:
                     consecutive_empty = 0
+
+            # One last live extraction — catches posts that finished loading
+            # since the last scroll checkpoint, while the page is still
+            # interactive enough to resolve their permalinks (the static
+            # snapshot used by _extract_posts() below isn't).
+            _merge_resolved(accumulated, _extract_posts_js(page, now), page)
 
         logger.info("Scraping LinkedIn feed (%d scroll steps)…", max_scrolls)
         try:

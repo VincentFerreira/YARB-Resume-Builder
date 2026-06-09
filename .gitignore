@@ -1,10 +1,32 @@
+# Secrets and local data
 .env
 cookies.json
 posts.json
 config_override.json
+bot_settings.json
+bot_posts.json
+
+# MCP server config (contains machine-specific absolute paths — copy from .mcp.json.example)
+.mcp.json
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
 .venv/
 venv/
+
+# Testing
 .pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
