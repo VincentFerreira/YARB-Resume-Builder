@@ -1,8 +1,15 @@
-# LinkedIn Feed Scraper
+# Decker Agent
 
-REST API that scrapes the LinkedIn feed, scores posts by relevance, and exposes them via HTTP endpoints.
+Decker Agent is your LinkedIn presence co-pilot. It silently monitors your feed, surfaces the posts most worth engaging with based on your interests, evaluates them with an LLM to filter out noise, and helps you draft sharp, contextual comments — so you show up consistently on LinkedIn without spending hours scrolling.
 
-## Overview
+Instead of opening LinkedIn and getting lost, you open Telegram: Decker has already scraped your feed, ranked the posts, run them through Claude to identify the ones where your voice adds value, and queued them up for you one card at a time. You read, decide — Comment / Keep / Skip / Not relevant — and move on. The research is done; you just bring the insight.
+
+The system is built around two cooperating components:
+
+- **Scraper API** — a FastAPI service that drives a real Chromium browser (via Scrapling/Patchright) to scrape your LinkedIn feed without triggering anti-bot protections, scores posts by keyword relevance, and persists them locally.
+- **Decker bot** — a Telegram bot that orchestrates the full workflow: trigger a scrape, send posts to Claude for LLM-based relevance evaluation, present them as triage cards, and help you craft comments directly from the chat.
+
+It also ships an **MCP server** so Claude Code can call the scraper directly as tools — useful for ad-hoc exploration or scripting from a Claude Code session.
 
 ```
 POST /scrape             → trigger a LinkedIn feed scrape
@@ -103,7 +110,14 @@ The project includes an MCP (Model Context Protocol) server that lets Claude Cod
 
 ### Setup
 
-The server is registered in `.mcp.json` at the project root. When you open this project in Claude Code, it will detect the file and ask you to approve the `linkedin-scraper` server. Approve it once, and the tools become available in every session.
+`.mcp.json` is gitignored because it contains machine-specific absolute paths. Create it from the provided example:
+
+```bash
+cp .mcp.json.example .mcp.json
+# then edit the three paths to match your local clone
+```
+
+When you open this project in Claude Code, it will detect the file and ask you to approve the `linkedin-scraper` server. Approve it once, and the tools become available in every session.
 
 ### Available tools
 
@@ -133,7 +147,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
   | .venv/bin/python mcp_server.py
 ```
 
-> **Note**: `.mcp.json` contains absolute paths. If you clone the project on a different machine, update the `command` and `cwd` fields, or regenerate the file.
+> **Note**: `.mcp.json` is gitignored. Copy `.mcp.json.example` to `.mcp.json` and replace the placeholder paths with your actual project directory before using Claude Code integration.
 
 ## Usage
 
