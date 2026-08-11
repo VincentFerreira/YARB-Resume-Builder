@@ -7,6 +7,7 @@ from scrapling.fetchers import StealthyFetcher
 
 from .config import Settings
 from .cookies import load_cookies
+from .dedup import dedup_by_content
 from .models import Post
 
 logger = logging.getLogger(__name__)
@@ -83,17 +84,31 @@ def _parse_count(text: str) -> int:
         return 0
 
 
+def _hash_urn(author: str, text: str) -> str:
+    """Canonical fallback identity for a post lacking a real activity URN.
+    Both extraction paths (JS live-page and Python static-snapshot) must call
+    this so identical content always yields the same URN, regardless of
+    which path found it or when — otherwise the same post scraped via both
+    paths in one session lands as two separate stored entries."""
+    digest = hashlib.md5(f"{author}:{text[:200]}".encode()).hexdigest()[:16]
+    return f"urn:li:post:hash:{digest}"
+
+
 def _extract_posts(page) -> list[Post]:
     posts: list[Post] = []
     now = datetime.now(tz=timezone.utc)
 
-    # LinkedIn's new DOM (2025+): post text lives inside
-    #   <p componentkey="feed-commentary_{UUID}">
+    # LinkedIn's current DOM: post text lives inside
+    #   <p componentkey="{UUID}">
     #     <span data-testid="expandable-text-box">…</span>
     #   </p>
+    # The componentkey is no longer prefixed "feed-commentary_" (LinkedIn
+    # dropped that naming at some point) — anchor on the stable
+    # data-testid instead and walk up to its nearest componentkey ancestor,
+    # which plays the same structural role the old prefixed element did.
     # The author's menu button precedes the text element in document order.
     commentary_elements = page.xpath(
-        "//*[starts-with(@componentkey, 'feed-commentary_')]"
+        "//span[@data-testid='expandable-text-box']/ancestor::*[@componentkey][1]"
     )
 
     if not commentary_elements:
@@ -183,8 +198,7 @@ def _extract_posts(page) -> list[Post]:
 
             if not urn:
                 # Hash-based fallback — stable across pages for the same content.
-                digest = hashlib.md5(f"{author}:{text[:200]}".encode()).hexdigest()[:16]
-                urn = f"urn:li:post:hash:{digest}"
+                urn = _hash_urn(author, text)
 
             if urn in seen_urns:
                 continue
@@ -262,11 +276,24 @@ _JS_EXTRACT_POSTS = r"""
         .filter(b => AUTHOR_RE.test(b.getAttribute('aria-label')));
     const timeSpans = Array.from(document.querySelectorAll('span'))
         .filter(s => TIME_RE.test((s.textContent || '').trim()));
+    // Reaction counts now live many elements deep in a sibling subtree, not
+    // among el's direct siblings — precompute every matching leaf, in
+    // document order, and pick the nearest one that follows el (same
+    // technique as the author/time lookups above).
+    const reactionEls = Array.from(document.querySelectorAll('*'))
+        .filter(e => e.children.length === 0 && REACTION_RE.test((e.textContent || '').trim()));
 
     const results = [];
-    for (const el of document.querySelectorAll('[componentkey^="feed-commentary_"]')) {
-        const textEl = el.querySelector('[data-testid="expandable-text-box"]');
-        const text = textEl ? textEl.innerText.trim() : '';
+    const seenEls = new Set();
+    for (const box of document.querySelectorAll('[data-testid="expandable-text-box"]')) {
+        // componentkey is no longer prefixed "feed-commentary_" — anchor on
+        // the stable data-testid and walk up to its nearest componentkey
+        // ancestor, which plays the same structural role the old prefixed
+        // element did (positioning for author/urn/reaction lookups below).
+        const el = box.closest('[componentkey]') || box;
+        if (seenEls.has(el)) continue;
+        seenEls.add(el);
+        const text = box.innerText.trim();
         if (!text) continue;
 
         // Last matching button that precedes this element in document order
@@ -297,8 +324,11 @@ _JS_EXTRACT_POSTS = r"""
                 if (m) { urn = m[1]; break; }
             }
         }
-        if (!urn || !urn.includes('urn:li:')) {
-            // djb2 hash — deterministic, cheap, consistent within a session
+        if (!urn || !urn.includes('urn:li:activity')) {
+            // djb2 hash — a disposable "needs a hash" marker. The Python caller
+            // (_extract_posts_js) discards this and recomputes a canonical MD5
+            // hash instead, so identical content always yields the same URN
+            // whether it was found here or via the static-snapshot extraction path.
             let h = 5381;
             const src = author + ':' + text.slice(0, 200);
             for (let i = 0; i < src.length; i++) h = ((h << 5) + h + src.charCodeAt(i)) | 0;
@@ -306,9 +336,12 @@ _JS_EXTRACT_POSTS = r"""
         }
 
         let reactions = 0;
-        for (let n = el.nextElementSibling, i = 0; n && i < 5; n = n.nextElementSibling, i++) {
-            const m = REACTION_RE.exec(n.innerText || '');
-            if (m) { reactions = parseInt(m[1].replace(/[\s,\.]/g, ''), 10) || 0; break; }
+        for (let i = 0; i < reactionEls.length; i++) {
+            if (el.compareDocumentPosition(reactionEls[i]) & Node.DOCUMENT_POSITION_FOLLOWING) {
+                const m = REACTION_RE.exec(reactionEls[i].textContent.trim());
+                if (m) reactions = parseInt(m[1].replace(/[\s,\.]/g, ''), 10) || 0;
+                break;
+            }
         }
 
         // Nearest preceding span whose text matches the relative-age pattern —
@@ -345,16 +378,26 @@ def _extract_posts_js(page, now: datetime) -> list[tuple[Post, str]]:
     except Exception as exc:
         logger.warning("JS extraction failed: %s", exc)
         return []
-    return [
-        (
-            Post(urn=p["urn"], author=p["author"], text=p["text"],
+
+    posts: list[tuple[Post, str]] = []
+    for p in (raw or []):
+        if not p.get("text"):
+            continue
+        urn = p["urn"]
+        url = p.get("url", "")
+        if not urn.startswith("urn:li:activity:"):
+            # Discard the JS-computed hash (djb2) and recompute canonically in
+            # Python — see _hash_urn.
+            urn = _hash_urn(p["author"], p["text"])
+            url = ""
+        posts.append((
+            Post(urn=urn, author=p["author"], text=p["text"],
                  reactions=p.get("reactions", 0), scraped_at=now,
                  posted_at=_parse_relative_age(p.get("ageText", ""), now),
-                 url=p.get("url", "")),
+                 url=url),
             p.get("componentkey", ""),
-        )
-        for p in (raw or []) if p.get("text")
-    ]
+        ))
+    return posts
 
 
 _COPY_LINK_LOCATOR = (
@@ -460,7 +503,7 @@ class LinkedInScraper:
             # LinkedIn is a React SPA — wait for the first posts to render.
             try:
                 page.wait_for_selector(
-                    '[componentkey^="feed-commentary_"]',
+                    '[data-testid="expandable-text-box"]',
                     timeout=20_000,
                 )
             except Exception:
@@ -475,16 +518,19 @@ class LinkedInScraper:
                 prev_count = len(accumulated)
 
                 # Snapshot the last visible post's key to detect when the virtual scroll shifts.
+                # componentkey is no longer prefixed "feed-commentary_" — the stable
+                # data-testid anchor is used instead, and the visible text stands in
+                # for an identity key (post componentkeys aren't unique enough alone).
                 last_key = page.evaluate(
-                    "() => { const p = document.querySelectorAll('[componentkey^=\"feed-commentary_\"]');"
-                    " return p.length ? p[p.length-1].getAttribute('componentkey') : ''; }"
+                    "() => { const p = document.querySelectorAll('[data-testid=\"expandable-text-box\"]');"
+                    " return p.length ? p[p.length-1].innerText.slice(0, 50) : ''; }"
                 )
 
                 # scrollIntoView puts the last post at top of viewport, then scrollBy pushes past it
                 # so the loading sentinel below all posts enters the viewport and fires the
                 # IntersectionObserver that triggers LinkedIn's API call for more posts.
                 page.evaluate(
-                    "() => { const p = document.querySelectorAll('[componentkey^=\"feed-commentary_\"]');"
+                    "() => { const p = document.querySelectorAll('[data-testid=\"expandable-text-box\"]');"
                     " if (p.length) {"
                     "   p[p.length-1].scrollIntoView({ behavior: 'instant', block: 'start' });"
                     "   window.scrollBy(0, window.innerHeight * 2);"
@@ -494,8 +540,8 @@ class LinkedInScraper:
                 # Wait up to 7s for the virtual scroll to shift — stops early when new posts arrive.
                 try:
                     page.wait_for_function(
-                        f"() => {{ const p = document.querySelectorAll('[componentkey^=\"feed-commentary_\"]');"
-                        f" const last = p.length ? p[p.length-1].getAttribute('componentkey') : '';"
+                        f"() => {{ const p = document.querySelectorAll('[data-testid=\"expandable-text-box\"]');"
+                        f" const last = p.length ? p[p.length-1].innerText.slice(0, 50) : '';"
                         f" return last !== {repr(last_key)}; }}",
                         timeout=7000,
                     )
@@ -544,6 +590,13 @@ class LinkedInScraper:
         # Also extract from the final DOM snapshot to catch any remaining posts.
         for post in _extract_posts(page):
             accumulated.setdefault(post.urn, post)
+
+        # A post can be captured twice within one session under different URNs —
+        # once under a fallback hash before its real activity URN is resolvable
+        # (e.g. an earlier scroll step, or a groupPost-only DOM snapshot), once
+        # under the canonical URN once more of the page has loaded. accumulated
+        # only merges by exact URN, so collapse by content here too.
+        accumulated = dedup_by_content(accumulated)
 
         logger.info("Total unique posts: %d", len(accumulated))
         return list(accumulated.values())

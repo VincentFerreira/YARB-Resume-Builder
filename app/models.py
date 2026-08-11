@@ -12,6 +12,7 @@ class Post(BaseModel):
     score: float = 0.0
     matched_keywords: list[str] = []
     url: str = ""
+    delivered: bool = False
 
 
 class ScrapeResult(BaseModel):

@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "linkedin-scraper": {
-      "command": "/home/linkedin_scraper/.venv/bin/python",
-      "args": ["/home/linkedin_scraper/mcp_server.py"],
-      "cwd": "/home/linkedin_scraper"
+      "command": "/home/vinga/Projets/decker-agent/.venv/bin/python",
+      "args": ["/home/vinga/Projets/decker-agent/mcp_server.py"],
+      "cwd": "/home/vinga/Projets/decker-agent"
     }
   }
 }

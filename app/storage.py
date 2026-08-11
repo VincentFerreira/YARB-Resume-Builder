@@ -3,6 +3,7 @@ import logging
 import os
 from pathlib import Path
 
+from .dedup import content_key, dedup_by_content, is_canonical_urn
 from .models import Post
 
 logger = logging.getLogger(__name__)
@@ -28,37 +29,44 @@ class PostStorage:
         tmp.write_text(json.dumps(data, indent=2, default=str))
         os.replace(tmp, self._path)
 
-    @staticmethod
-    def _content_key(post: Post) -> str:
-        """Stable key based on content, used to detect duplicates across URN types."""
-        return f"{post.author.lower().strip()}|{post.text[:120].lower().strip()}"
-
     def upsert_posts(self, new_posts: list[Post]) -> int:
-        existing = self.load_all()
-
-        # Build a reverse index: content_key -> urn, for hash-based entries only.
-        # When a real URN arrives for the same content, the hash entry is dropped.
-        hash_index: dict[str, str] = {
-            self._content_key(p): urn
-            for urn, p in existing.items()
-            if urn.startswith("urn:li:post:hash:")
+        # Self-heals stray duplicates left by past bugs (mismatched hash
+        # algorithms, groupPost vs activity URNs for the same post) without a
+        # separate migration step — runs every time, including with an empty list.
+        existing = dedup_by_content(self.load_all())
+        content_index: dict[str, str] = {
+            content_key(p): urn for urn, p in existing.items()
         }
 
         added = 0
         for post in new_posts:
-            key = self._content_key(post)
-            existing_urn = existing.get(post.urn)
-            shadow_urn = hash_index.get(key)
+            key = content_key(post)
+            prior_urn = content_index.get(key)
+            carried_delivered = False
 
+            if prior_urn and prior_urn != post.urn:
+                prior_entry = existing.get(prior_urn)
+                prior_ok = is_canonical_urn(prior_urn)
+                post_ok = is_canonical_urn(post.urn)
+                if post_ok and not prior_ok:
+                    # Upgrade: drop the shadow entry, carry its delivered flag forward.
+                    logger.debug("Dedup: replacing %s with %s", prior_urn, post.urn)
+                    existing.pop(prior_urn, None)
+                    carried_delivered = bool(prior_entry and prior_entry.delivered)
+                else:
+                    # Duplicate of content we already track under an equal-or-more
+                    # canonical URN — drop it.
+                    continue
+            else:
+                prior_entry = existing.get(post.urn)
+                carried_delivered = bool(prior_entry and prior_entry.delivered)
+
+            if carried_delivered:
+                post = post.model_copy(update={"delivered": True})
             if post.urn not in existing:
-                if shadow_urn and shadow_urn != post.urn:
-                    # Real URN arrived for a post we stored under a hash URN — replace it.
-                    logger.debug("Dedup: replacing %s with %s", shadow_urn, post.urn)
-                    del existing[shadow_urn]
-                    hash_index.pop(key, None)
                 added += 1
-
             existing[post.urn] = post
+            content_index[key] = post.urn
 
         self.save_all(existing)
         return added
@@ -69,3 +77,17 @@ class PostStorage:
 
     def get_interesting(self, threshold: float) -> list[Post]:
         return [p for p in self.get_all() if p.score >= threshold]
+
+    def get_new_relevant(self, threshold: float) -> list[Post]:
+        return [p for p in self.get_all() if p.score >= threshold and not p.delivered]
+
+    def mark_delivered(self, urns: list[str]) -> None:
+        """Never reset to False elsewhere — once delivered, always delivered."""
+        existing = self.load_all()
+        changed = False
+        for urn in urns:
+            if urn in existing and not existing[urn].delivered:
+                existing[urn] = existing[urn].model_copy(update={"delivered": True})
+                changed = True
+        if changed:
+            self.save_all(existing)

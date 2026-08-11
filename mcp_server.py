@@ -12,14 +12,14 @@ import threading
 import time
 
 import anyio
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from app.config import get_settings, save_override
 from app.scorer import score_posts
 from app.scraper import AuthenticationError, LinkedInScraper
 from app.storage import PostStorage
 
-mcp = FastMCP(
+mcp = MCPServer(
     name="linkedin-scraper",
     instructions=(
         "Tools for scraping the LinkedIn feed, retrieving and filtering stored posts, "
@@ -69,6 +69,61 @@ async def scrape_feed(scroll_attempts: int | None = None) -> list[dict]:
 
     return await anyio.to_thread.run_sync(
         functools.partial(_do_scrape), abandon_on_cancel=False
+    )
+
+
+@mcp.tool()
+async def get_new_relevant_posts(
+    scroll_attempts: int | None = None, threshold: float | None = None
+) -> list[dict]:
+    """
+    Full pipeline: scrape the feed, score, save (deduplicated against
+    previously stored posts), then return only posts that are both above
+    the relevance threshold and not yet delivered by a prior call to this
+    tool — sorted by score descending. Marks returned posts as delivered,
+    so a second call with nothing new relevant returns an empty list.
+
+    Args:
+        scroll_attempts: Number of scroll steps (each loads ~5-10 posts).
+                         Defaults to max_scroll_attempts from config.
+        threshold: Minimum score cutoff. Defaults to relevance_threshold from config.
+    """
+    def _do_run() -> list[dict]:
+        scraper = _scraper  # capture local ref before any concurrent update_interests call
+        if not _scrape_lock.acquire(blocking=False):
+            return [{"error": "A scrape is already in progress. Try again later."}]
+        try:
+            start = time.monotonic()
+            t = threshold if threshold is not None else _settings.relevance_threshold
+            posts = scraper.scrape(scroll_attempts)
+            scored = score_posts(posts, _settings.interest_keywords)
+            _storage.upsert_posts(scored)
+
+            new_relevant = _storage.get_new_relevant(t)
+            _storage.mark_delivered([p.urn for p in new_relevant])
+
+            result = [
+                p.model_copy(update={"delivered": True}).model_dump(mode="json")
+                for p in new_relevant
+            ]
+            result.insert(0, {
+                "summary": {
+                    "posts_scraped": len(scored),
+                    "new_relevant": len(new_relevant),
+                    "threshold": t,
+                    "duration_seconds": round(time.monotonic() - start, 2),
+                }
+            })
+            return result
+        except AuthenticationError as exc:
+            return [{"error": f"Authentication failed: {exc}"}]
+        except Exception as exc:
+            return [{"error": f"Unexpected error: {exc}"}]
+        finally:
+            _scrape_lock.release()
+
+    return await anyio.to_thread.run_sync(
+        functools.partial(_do_run), abandon_on_cancel=False
     )
 
 

@@ -3,8 +3,10 @@ import logging
 from functools import lru_cache
 from pathlib import Path
 
+from typing import Annotated
+
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ class Settings(BaseSettings):
 
     cookies_file: str = "cookies.json"
     posts_file: str = "posts.json"
-    interest_keywords: list[str] = ["QA", "testing", "quality assurance"]
+    interest_keywords: Annotated[list[str], NoDecode] = ["QA", "testing", "quality assurance"]
     relevance_threshold: float = 2.0
     max_scroll_attempts: int = 3
     headless: bool = True

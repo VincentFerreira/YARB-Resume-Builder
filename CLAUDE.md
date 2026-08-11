@@ -18,7 +18,7 @@ Two cooperating systems share this repo:
 - Python 3.12+
 - FastAPI + Uvicorn, Pydantic-settings + python-dotenv
 - `scrapling[all]>=0.4.8` (StealthyFetcher with Patchright/Chromium)
-- `mcp>=1.0.0` (FastMCP — MCP server for Claude Code integration)
+- `mcp>=2.0.0` (MCPServer — MCP server for Claude Code integration)
 - `python-telegram-bot>=20.0` (async, long-polling)
 - `pytest>=8.0.0` (integration smoke tests)
 - No Docker

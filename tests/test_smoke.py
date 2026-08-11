@@ -93,3 +93,14 @@ def test_posts_have_no_duplicate_urns(scraped_posts):
         f"{len(urns) - len(set(urns))} duplicate URN(s) detected — "
         "deduplication in scrape() is not working correctly."
     )
+
+
+def test_posts_have_no_duplicate_content(scraped_posts):
+    """Two different URNs (e.g. a hash URN and a groupPost/activity URN) can
+    still represent the same post — unique URN strings alone don't prove
+    dedup worked. Content-key uniqueness catches that case."""
+    keys = [(p.author.lower().strip(), p.text[:120].lower().strip()) for p in scraped_posts]
+    assert len(keys) == len(set(keys)), (
+        f"{len(keys) - len(set(keys))} duplicate content-key(s) detected — "
+        "same post stored under different URNs."
+    )
