@@ -5,6 +5,7 @@ coverage
 .env.local
 cv_*.pdf
 cv_*.json
+cvs/
 *.log
 .claude
 .cursor
