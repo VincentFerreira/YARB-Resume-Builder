@@ -60,6 +60,7 @@ interface LatexTemplateData {
   tSkills: string;
   tExperience: string;
   tEducation: string;
+  tCertifications: string;
   tLanguages: string;
   tTech: string;
   skills: { name: string; items: string }[];
@@ -81,11 +82,16 @@ interface LatexTemplateData {
     location: string;
     description: string;
   }[];
+  certifications: {
+    year: string;
+    title: string;
+    issuer: string;
+  }[];
   languages: string[];
 }
 
 const buildTemplateData = (data: CVData, fontId?: string): LatexTemplateData => {
-  const { personalInfo, skills, experience, education, languages, currentLanguage } = data;
+  const { personalInfo, skills, experience, education, certifications, languages, currentLanguage } = data;
   const t = LATEX_TRANSLATIONS[currentLanguage] ?? LATEX_TRANSLATIONS['fr'];
   const photoData = extractBase64Data(personalInfo.photo);
 
@@ -105,6 +111,7 @@ const buildTemplateData = (data: CVData, fontId?: string): LatexTemplateData => 
     tSkills: t.skills,
     tExperience: t.experience,
     tEducation: t.education,
+    tCertifications: t.certifications,
     tLanguages: t.languages,
     tTech: t.tech,
     skills: skills.map(s => ({
@@ -128,6 +135,11 @@ const buildTemplateData = (data: CVData, fontId?: string): LatexTemplateData => 
       school: escapeLatex(edu.school),
       location: escapeLatex(edu.location),
       description: escapeLatex(getLangText(edu.description, currentLanguage)),
+    })),
+    certifications: (certifications ?? []).map(cert => ({
+      year: escapeLatex(cert.year),
+      title: escapeLatex(getLangText(cert.title, currentLanguage)),
+      issuer: escapeLatex(cert.issuer),
     })),
     languages: getLangArray(languages, currentLanguage).map(escapeLatex),
   };

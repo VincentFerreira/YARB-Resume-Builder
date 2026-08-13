@@ -43,6 +43,7 @@ const minimalCV = (): CVData => ({
   skills: [],
   experience: [],
   education: [],
+  certifications: [],
   languages: { fr: [], en: [] },
 });
 

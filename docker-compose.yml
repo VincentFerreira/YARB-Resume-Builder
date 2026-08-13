@@ -1,0 +1,20 @@
+services:
+  yarb:
+    build: .
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    env_file:
+      # Optional: works without it too, just without AI import (no API key).
+      - path: .env.local
+        required: false
+    environment:
+      # Bind mounts on Docker Desktop (macOS/Windows) don't reliably deliver
+      # file-change events, so Vite falls back to polling — see vite.config.ts.
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - .:/yarb
+      # Anonymous volume: keeps the image's own node_modules (installed for the
+      # container's Linux/arch) instead of letting the bind mount above shadow
+      # it with the host's.
+      - /yarb/node_modules

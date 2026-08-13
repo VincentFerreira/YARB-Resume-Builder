@@ -26,6 +26,7 @@ dist-ssr
 # Personal CV data
 cv_*.pdf
 cv_*.json
+cvs/
 
 # agents / editor internals (not repo metadata)
 .agents

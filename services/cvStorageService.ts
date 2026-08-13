@@ -24,7 +24,9 @@ export async function listCVs(): Promise<CVMeta[]> {
 export async function loadCV(id: string): Promise<CVRecord> {
   const res = await fetch(`${API_BASE}/cvs/${id}`);
   if (!res.ok) throw new Error('CV not found');
-  return res.json();
+  const record: CVRecord = await res.json();
+  const migrated = migrateCV(record.data);
+  return migrated ? { ...record, data: migrated } : record;
 }
 
 export async function createCV(name: string, data: CVData): Promise<CVMeta> {
@@ -61,7 +63,7 @@ export function autoSaveToLocalStorage(data: CVData): void {
 export function restoreFromLocalStorage(): CVData | null {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    return raw ? JSON.parse(raw) : null;
+    return raw ? migrateCV(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
@@ -105,6 +107,15 @@ export function migrateCV(json: any): CVData | null {
     degree: toBilingual(edu.degree),
     description: toBilingual(edu.description),
   }));
+
+  if (Array.isArray(migrated.certifications)) {
+    migrated.certifications = migrated.certifications.map((cert: any) => ({
+      ...cert,
+      title: toBilingual(cert.title),
+    }));
+  } else {
+    migrated.certifications = [];
+  }
 
   if (Array.isArray(migrated.languages)) {
     migrated.languages = toBilingualArray(migrated.languages);

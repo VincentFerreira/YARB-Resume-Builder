@@ -9,6 +9,9 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
+      // Bind-mounted volumes (e.g. Docker on macOS/Windows) often don't propagate
+      // inotify events, so file changes go unnoticed without polling.
+      watch: process.env.CHOKIDAR_USEPOLLING === 'true' ? { usePolling: true } : undefined,
       proxy: {
         '/api/latex': {
           target: 'https://latexonline.cc',

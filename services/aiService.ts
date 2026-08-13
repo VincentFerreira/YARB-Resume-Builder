@@ -482,6 +482,7 @@ export const parseResumeFromPdf = async (
             endDate: e.endDate || "",
             description: toBilingual(e.description || "")
         })),
+        certifications: [],
         languages: toBilingualArray(Array.isArray(extracted.languages) ? extracted.languages : [])
     };
 };

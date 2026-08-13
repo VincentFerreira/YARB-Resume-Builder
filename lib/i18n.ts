@@ -104,6 +104,13 @@ export interface UITranslations {
   schoolLabel: string;
   startLabel: string;
   endLabel: string;
+  // Certifications
+  certificationsSection: string;
+  addCertification: string;
+  certificationLabel: string;
+  certificationTitleLabel: string;
+  issuerLabel: string;
+  yearLabel: string;
   // Languages list
   addLanguage: string;
   languagePlaceholder: string;
@@ -116,6 +123,7 @@ export interface UITranslations {
   previewSkills: string;
   previewExperience: string;
   previewEducation: string;
+  previewCertifications: string;
   previewLanguages: string;
   previewTech: string;
   noPhoto: string;
@@ -154,6 +162,12 @@ export const UI_TRANSLATIONS: Record<Language, UITranslations> = {
     schoolLabel: "École",
     startLabel: "Début",
     endLabel: "Fin",
+    certificationsSection: "Certifications",
+    addCertification: "Ajouter une certification",
+    certificationLabel: "Certification",
+    certificationTitleLabel: "Titre",
+    issuerLabel: "Organisme",
+    yearLabel: "Année",
     addLanguage: "Ajouter une langue",
     languagePlaceholder: "Langue (ex: Anglais - Courant)",
     newCategory: "Nouvelle Catégorie",
@@ -163,6 +177,7 @@ export const UI_TRANSLATIONS: Record<Language, UITranslations> = {
     previewSkills: "COMPÉTENCES",
     previewExperience: "EXPÉRIENCE PROFESSIONNELLE",
     previewEducation: "FORMATION",
+    previewCertifications: "CERTIFICATIONS",
     previewLanguages: "LANGUES",
     previewTech: "Tech :",
     noPhoto: "Pas de photo",
@@ -199,6 +214,12 @@ export const UI_TRANSLATIONS: Record<Language, UITranslations> = {
     schoolLabel: "School",
     startLabel: "Start",
     endLabel: "End",
+    certificationsSection: "Certifications",
+    addCertification: "Add certification",
+    certificationLabel: "Certification",
+    certificationTitleLabel: "Title",
+    issuerLabel: "Issuing Organization",
+    yearLabel: "Year",
     addLanguage: "Add language",
     languagePlaceholder: "Language (e.g. English - Fluent)",
     newCategory: "New Category",
@@ -208,6 +229,7 @@ export const UI_TRANSLATIONS: Record<Language, UITranslations> = {
     previewSkills: "SKILLS",
     previewExperience: "PROFESSIONAL EXPERIENCE",
     previewEducation: "EDUCATION",
+    previewCertifications: "CERTIFICATIONS",
     previewLanguages: "LANGUAGES",
     previewTech: "Tech:",
     noPhoto: "No Photo",
@@ -222,6 +244,7 @@ export interface LaTeXTranslations {
   skills: string;
   experience: string;
   education: string;
+  certifications: string;
   tech: string;
   languages: string;
 }
@@ -231,6 +254,7 @@ export const LATEX_TRANSLATIONS: Record<Language, LaTeXTranslations> = {
     skills: "Compétences",
     experience: "Expérience",
     education: "Éducation",
+    certifications: "Certifications",
     tech: "Tech :",
     languages: "Langues",
   },
@@ -238,6 +262,7 @@ export const LATEX_TRANSLATIONS: Record<Language, LaTeXTranslations> = {
     skills: "Skills",
     experience: "Experience",
     education: "Education",
+    certifications: "Certifications",
     tech: "Tech:",
     languages: "Languages",
   },

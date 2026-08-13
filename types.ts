@@ -22,6 +22,7 @@ export interface CVData {
   skills: SkillCategory[];
   experience: ExperienceItem[];
   education: EducationItem[];
+  certifications: CertificationItem[];
   languages: MultiLangStringArray;
 }
 
@@ -50,6 +51,13 @@ export interface EducationItem {
   startDate: string;
   endDate: string;
   description: MultiLangString;
+}
+
+export interface CertificationItem {
+  id: string;
+  title: MultiLangString;
+  issuer: string;
+  year: string;
 }
 
 export interface ATSKeyword {

@@ -1,5 +1,5 @@
 import React, { ChangeEvent, useState } from 'react';
-import { CVData, ExperienceItem, SkillCategory, EducationItem } from '../types';
+import { CVData, ExperienceItem, SkillCategory, EducationItem, CertificationItem } from '../types';
 import {
   getLangText, getLangArray,
   createMultiLangString, createMultiLangArray,
@@ -158,6 +158,35 @@ const Editor: React.FC<EditorProps> = ({ data, onChange }) => {
 
   const removeEducation = (index: number) => {
     onChange({ ...data, education: data.education.filter((_, i) => i !== index) });
+  };
+
+  const updateCertification = (index: number, field: keyof CertificationItem, value: string) => {
+    const newCerts = [...data.certifications];
+    if (field === 'title') {
+      newCerts[index] = {
+        ...newCerts[index],
+        title: { ...newCerts[index].title, [lang]: value }
+      };
+    } else {
+      (newCerts[index] as any)[field] = value;
+    }
+    onChange({ ...data, certifications: newCerts });
+  };
+
+  const addCertification = () => {
+    onChange({
+      ...data,
+      certifications: [...data.certifications, {
+        id: Date.now().toString(),
+        title: createMultiLangString({ fr: 'Titre de la certification', en: 'Certification title' }),
+        issuer: 'Organisme',
+        year: new Date().getFullYear().toString(),
+      }]
+    });
+  };
+
+  const removeCertification = (index: number) => {
+    onChange({ ...data, certifications: data.certifications.filter((_, i) => i !== index) });
   };
 
   const updateLanguageItem = (index: number, value: string) => {
@@ -379,6 +408,31 @@ const Editor: React.FC<EditorProps> = ({ data, onChange }) => {
                   </div>
                   <input className="border p-2 rounded text-sm" placeholder={t.locationLabel} value={edu.location} onChange={(e) => updateEducation(index, 'location', e.target.value)} />
                   <textarea className="w-full border p-2 rounded text-sm" placeholder="Description" value={getLangText(edu.description, lang)} onChange={(e) => updateEducation(index, 'description', e.target.value)} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Certifications */}
+        <SectionHeader title={t.certificationsSection} id="certifications" />
+        {activeSection === 'certifications' && (
+          <div className="p-4 space-y-6">
+            <button onClick={addCertification} className="w-full py-2 bg-indigo-50 text-indigo-700 rounded font-medium hover:bg-indigo-100 transition-colors mb-4">
+              + {t.addCertification}
+            </button>
+            {data.certifications.map((cert, index) => (
+              <div key={cert.id} className="border border-slate-200 rounded-lg p-4 bg-white shadow-sm">
+                <div className="flex justify-between items-start mb-4">
+                  <h4 className="font-bold text-slate-700">{t.certificationLabel} #{index + 1}</h4>
+                  <button onClick={() => removeCertification(index)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <input className="border p-2 rounded text-sm" placeholder={t.certificationTitleLabel} value={getLangText(cert.title, lang)} onChange={(e) => updateCertification(index, 'title', e.target.value)} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <input className="border p-2 rounded text-sm" placeholder={t.issuerLabel} value={cert.issuer} onChange={(e) => updateCertification(index, 'issuer', e.target.value)} />
+                    <input className="border p-2 rounded text-sm" placeholder={t.yearLabel} value={cert.year} onChange={(e) => updateCertification(index, 'year', e.target.value)} />
+                  </div>
                 </div>
               </div>
             ))}

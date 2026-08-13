@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node server.js",
+    "server": "node --watch server.js",
     "start": "concurrently -n vite,latex -c cyan,yellow \"npm run dev\" \"npm run server\"",
     "test": "vitest run",
     "test:watch": "vitest",

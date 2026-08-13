@@ -64,6 +64,7 @@ const makeCV = (): CVData => ({
       description: { fr: 'Spécialisation IA', en: 'AI specialisation' },
     },
   ],
+  certifications: [],
   languages: { fr: ['Français (Natif)', 'Anglais (Courant)'], en: ['French (Native)', 'English (Fluent)'] },
 });
 

@@ -147,6 +147,17 @@ export const INITIAL_CV_DATA: CVData = {
       }
     }
   ],
+  certifications: [
+    {
+      id: "cert1",
+      title: {
+        fr: "AWS Certified Solutions Architect",
+        en: "AWS Certified Solutions Architect"
+      },
+      issuer: "Amazon Web Services",
+      year: "2022"
+    }
+  ],
   languages: {
     fr: ["Français (Langue maternelle)", "Anglais (Courant)"],
     en: ["French (Native)", "English (Fluent)"]

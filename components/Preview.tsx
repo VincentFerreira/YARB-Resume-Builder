@@ -21,7 +21,7 @@ interface PreviewProps {
 }
 
 const Preview: React.FC<PreviewProps> = ({ data }) => {
-  const { personalInfo, skills, experience, education, languages, currentLanguage: lang } = data;
+  const { personalInfo, skills, experience, education, certifications, languages, currentLanguage: lang } = data;
   const h = UI_TRANSLATIONS[lang] ?? UI_TRANSLATIONS['fr'];
   const locale = LANGUAGES.find(l => l.code === lang)?.locale ?? 'fr-FR';
 
@@ -169,6 +169,30 @@ const Preview: React.FC<PreviewProps> = ({ data }) => {
                 </div>
                 <div className="text-sm text-slate-500">
                   {getLangText(edu.description, lang)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* CERTIFICATIONS */}
+      <div className="mb-8">
+        <h3 className="text-xl font-bold text-indigo-800 border-b-2 border-indigo-800 mb-4 flex items-center gap-2">
+          <span className="text-2xl">📜</span> {h.previewCertifications}
+        </h3>
+        <div className="space-y-2">
+          {certifications.map((cert) => (
+            <div key={cert.id} className="flex flex-col sm:flex-row">
+              <div className="w-full sm:w-40 flex flex-col items-end pr-4 mb-2 sm:mb-0">
+                <span className="font-bold text-slate-800 text-sm">{cert.year}</span>
+              </div>
+              <div className="flex-1 border-l-2 border-slate-200 pl-4">
+                <div className="font-bold text-base text-slate-800">
+                  {getLangText(cert.title, lang)}
+                </div>
+                <div className="text-sm text-slate-600 italic">
+                  {cert.issuer}
                 </div>
               </div>
             </div>

@@ -94,14 +94,26 @@ Both keys are optional — you only need the one(s) for the AI provider(s) you w
 
 If you don't want to install Node.js or a LaTeX distribution locally, Docker handles everything.
 
-### Build the Docker image
+### Option A — `docker compose` (recommended for development, live-reload)
+
+`docker build`'s `COPY . .` only snapshots your code at build time — restarting a container from that image won't pick up later edits. `docker-compose.yml` instead bind-mounts the project directory into the container, so the Vite dev server (already running in the image via `npm start`) picks up file changes immediately, same as running `npm run dev` locally.
+
+```bash
+docker compose up --build
+```
+
+- First run (or after changing `package.json`), use `--build` to rebuild the image; subsequent runs can just be `docker compose up`.
+- Your local files are mounted read-write into the container; `node_modules` stays the one installed inside the image (see the anonymous volume in `docker-compose.yml`) so it doesn't get shadowed by your host's.
+- Requires a `.env.local` file (see [Getting started](#getting-started)) — `docker-compose.yml` reads it via `env_file`.
+
+### Option B — plain `docker run` (one-off, no live-reload)
+
+Rebuild the image (`docker build -t yarb .`) after every code change — there's no volume, so the container only ever sees the code that was copied in at build time.
 
 ```bash
 # Build the image once
 docker build -t yarb .
 ```
-
-### Run the servers
 
 If you already have a `.env.local` file configured, you can use it directly:
 
