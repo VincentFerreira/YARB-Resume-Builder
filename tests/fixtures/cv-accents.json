@@ -1,0 +1,66 @@
+{
+  "currentLanguage": "fr",
+  "personalInfo": {
+    "firstName": "Frédérique-Ophélie",
+    "lastName": "Kaçmaz-Núñez",
+    "title": {
+      "fr": "Développeuse Cœur de Système & Réseaux",
+      "en": "Core Systems & Networks Developer"
+    },
+    "email": "frederique.kacmaz-nunez@example.com",
+    "medium": "medium.com/@frederique.o",
+    "location": "Château-Gaillard, Île-de-France",
+    "linkedin": "linkedin.com/in/frederique-kacmaz-nunez",
+    "github": "github.com/fkacmaznunez",
+    "photo": null,
+    "summary": {
+      "fr": "Développeuse passionnée par la résilience des systèmes distribués, l'œuvre d'ingénierie précise et la qualité irréprochable du code.",
+      "en": "Developer passionate about distributed systems resilience and impeccable code quality."
+    }
+  },
+  "skills": [
+    {
+      "id": "skill-1",
+      "name": { "fr": "Compétences clés", "en": "Core skills" },
+      "items": { "fr": "Sécurité réseau, Œuvres open-source, Rédaction technique", "en": "Network security, Open-source work, Technical writing" }
+    }
+  ],
+  "experience": [
+    {
+      "id": "exp-1",
+      "role": { "fr": "Ingénieure Réseau Senior", "en": "Senior Network Engineer" },
+      "company": "Société Générale d'Électricité",
+      "location": "Genève, Suisse",
+      "startDate": { "fr": "Février 2019", "en": "February 2019" },
+      "endDate": { "fr": "Aujourd'hui", "en": "Present" },
+      "description": {
+        "fr": ["Déploiement d'une infrastructure résiliente à l'échelle européenne", "Rédaction de la documentation à l'attention des équipes françaises et québécoises"],
+        "en": ["Deployed a resilient infrastructure at European scale", "Wrote documentation for French and Québécois teams"]
+      },
+      "techStack": "Go, gRPC, Prométhée-CI"
+    }
+  ],
+  "education": [
+    {
+      "id": "edu-1",
+      "school": "École Polytechnique Fédérale",
+      "degree": { "fr": "Doctorat ès Sciences", "en": "PhD in Sciences" },
+      "location": "Lausanne, Suisse",
+      "startDate": "2015",
+      "endDate": "2019",
+      "description": { "fr": "Thèse sur la théorie des systèmes répartis", "en": "Thesis on distributed systems theory" }
+    }
+  ],
+  "certifications": [
+    {
+      "id": "cert-1",
+      "title": { "fr": "Certification en Cybersécurité Réseau", "en": "Network Cybersecurity Certification" },
+      "issuer": "Société Française de Cybersécurité",
+      "year": "2022"
+    }
+  ],
+  "languages": {
+    "fr": ["Français (Langue maternelle)", "Espagnol (Courant)"],
+    "en": ["French (Native)", "Spanish (Fluent)"]
+  }
+}

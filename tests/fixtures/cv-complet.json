@@ -1,0 +1,84 @@
+{
+  "currentLanguage": "fr",
+  "personalInfo": {
+    "firstName": "Alice",
+    "lastName": "Dupont",
+    "title": {
+      "fr": "Ingénieure Logiciel Senior",
+      "en": "Senior Software Engineer"
+    },
+    "email": "alice.dupont@example.com",
+    "medium": "medium.com/@alicedupont",
+    "location": "12 Rue des Lilas, 75011 Paris, France",
+    "linkedin": "linkedin.com/in/alicedupont",
+    "github": "github.com/alicedupont",
+    "photo": null,
+    "summary": {
+      "fr": "Ingénieure logiciel avec huit ans d'expérience dans la conception de systèmes distribués et d'API à forte charge.",
+      "en": "Software engineer with eight years of experience designing distributed systems and high-load APIs."
+    }
+  },
+  "skills": [
+    {
+      "id": "skill-1",
+      "name": { "fr": "Langages", "en": "Languages" },
+      "items": { "fr": "TypeScript, Python, Go", "en": "TypeScript, Python, Go" }
+    },
+    {
+      "id": "skill-2",
+      "name": { "fr": "Infrastructure", "en": "Infrastructure" },
+      "items": { "fr": "Kubernetes, Terraform, AWS", "en": "Kubernetes, Terraform, AWS" }
+    }
+  ],
+  "experience": [
+    {
+      "id": "exp-1",
+      "role": { "fr": "Ingénieure Logiciel Principale", "en": "Principal Software Engineer" },
+      "company": "Nimbus Cloud SAS",
+      "location": "Paris, France",
+      "startDate": { "fr": "Mars 2021", "en": "March 2021" },
+      "endDate": { "fr": "Aujourd'hui", "en": "Present" },
+      "description": {
+        "fr": ["Conception de l'architecture de facturation multi-tenant", "Encadrement d'une équipe de quatre ingénieurs"],
+        "en": ["Designed the multi-tenant billing architecture", "Mentored a team of four engineers"]
+      },
+      "techStack": "TypeScript, PostgreSQL, Kubernetes"
+    },
+    {
+      "id": "exp-2",
+      "role": { "fr": "Ingénieure Logiciel", "en": "Software Engineer" },
+      "company": "Voltaire Systems",
+      "location": "Lyon, France",
+      "startDate": { "fr": "Janvier 2017", "en": "January 2017" },
+      "endDate": { "fr": "Février 2021", "en": "February 2021" },
+      "description": {
+        "fr": ["Développement de l'API de paiement interne"],
+        "en": ["Built the internal payments API"]
+      },
+      "techStack": "Python, Django, Redis"
+    }
+  ],
+  "education": [
+    {
+      "id": "edu-1",
+      "school": "Université de Lyon",
+      "degree": { "fr": "Master Informatique", "en": "Master's in Computer Science" },
+      "location": "Lyon, France",
+      "startDate": "2013",
+      "endDate": "2015",
+      "description": { "fr": "Spécialisation systèmes distribués", "en": "Specialization in distributed systems" }
+    }
+  ],
+  "certifications": [
+    {
+      "id": "cert-1",
+      "title": { "fr": "AWS Certified Solutions Architect", "en": "AWS Certified Solutions Architect" },
+      "issuer": "Amazon Web Services",
+      "year": "2023"
+    }
+  ],
+  "languages": {
+    "fr": ["Français (Langue maternelle)", "Anglais (Courant)"],
+    "en": ["French (Native)", "English (Fluent)"]
+  }
+}

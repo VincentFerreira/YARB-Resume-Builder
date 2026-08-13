@@ -1,0 +1,53 @@
+{
+  "currentLanguage": "fr",
+  "personalInfo": {
+    "firstName": "Marc",
+    "lastName": "Petit",
+    "title": { "fr": "Développeur", "en": "Developer" },
+    "email": "marc.petit@example.com",
+    "medium": "",
+    "location": "",
+    "linkedin": "",
+    "github": "",
+    "photo": null,
+    "summary": { "fr": "", "en": "" }
+  },
+  "skills": [
+    {
+      "id": "skill-1",
+      "name": { "fr": "Web", "en": "Web" },
+      "items": { "fr": "HTML, CSS, JavaScript", "en": "HTML, CSS, JavaScript" }
+    }
+  ],
+  "experience": [
+    {
+      "id": "exp-1",
+      "role": { "fr": "Développeur Junior", "en": "Junior Developer" },
+      "company": "Petite Structure SARL",
+      "location": "Nantes, France",
+      "startDate": { "fr": "Juin 2023", "en": "June 2023" },
+      "endDate": { "fr": "Aujourd'hui", "en": "Present" },
+      "description": {
+        "fr": ["Maintenance du site vitrine"],
+        "en": ["Maintaining the marketing website"]
+      },
+      "techStack": "JavaScript"
+    }
+  ],
+  "education": [
+    {
+      "id": "edu-1",
+      "school": "IUT de Nantes",
+      "degree": { "fr": "BUT Informatique", "en": "Associate Degree in Computer Science" },
+      "location": "Nantes, France",
+      "startDate": "2021",
+      "endDate": "2023",
+      "description": { "fr": "", "en": "" }
+    }
+  ],
+  "certifications": [],
+  "languages": {
+    "fr": ["Français (Langue maternelle)"],
+    "en": ["French (Native)"]
+  }
+}

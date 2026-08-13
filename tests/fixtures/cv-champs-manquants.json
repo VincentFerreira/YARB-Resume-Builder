@@ -1,0 +1,17 @@
+{
+  "currentLanguage": "fr",
+  "personalInfo": {
+    "firstName": "Champs",
+    "lastName": "Manquants",
+    "title": { "fr": "Test", "en": "Test" },
+    "email": "champs.manquants@example.com",
+    "medium": "",
+    "location": "",
+    "linkedin": "",
+    "github": "",
+    "photo": null,
+    "summary": { "fr": "", "en": "" }
+  },
+  "experience": [],
+  "education": []
+}
