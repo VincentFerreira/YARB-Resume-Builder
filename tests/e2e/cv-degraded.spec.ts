@@ -14,7 +14,7 @@ for (const { fixture, bannerText, label } of cases) {
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));
 
-    await page.goto('/');
+    await page.goto('/cvs/new');
     await openCvManager(page);
     await page.locator('input[type="file"][accept=".json"]').setInputFiles(fixturePath(fixture));
 

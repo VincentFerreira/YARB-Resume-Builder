@@ -1,19 +1,11 @@
-import { CVData } from '../types';
+import { CVData, CvMeta, CvRecord } from '../types';
 import { createMultiLangString, createMultiLangArray } from '../lib/i18n';
 
-const API_BASE = `http://${window.location.hostname}:3001`;
+const API_BASE = `http://${window.location.hostname}:3001/api`;
 const LS_KEY = 'cv_autosave';
 
-export interface CVMeta {
-  id: string;
-  name: string;
-  updatedAt: number;
-  createdAt: number;
-}
-
-export interface CVRecord extends CVMeta {
-  data: CVData;
-}
+export type CVMeta = CvMeta;
+export type CVRecord = CvRecord;
 
 export async function listCVs(): Promise<CVMeta[]> {
   const res = await fetch(`${API_BASE}/cvs`);
@@ -29,23 +21,33 @@ export async function loadCV(id: string): Promise<CVRecord> {
   return migrated ? { ...record, data: migrated } : record;
 }
 
-export async function createCV(name: string, data: CVData): Promise<CVMeta> {
+export async function createCV(label: string, data: CVData): Promise<CVMeta> {
   const res = await fetch(`${API_BASE}/cvs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, data }),
+    body: JSON.stringify({ label, data }),
   });
   if (!res.ok) throw new Error('Failed to create CV');
   return res.json();
 }
 
-export async function saveCV(id: string, name: string, data: CVData): Promise<CVMeta> {
+export async function saveCV(id: string, label: string, data: CVData): Promise<CVMeta> {
   const res = await fetch(`${API_BASE}/cvs/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, data }),
+    body: JSON.stringify({ label, data }),
   });
   if (!res.ok) throw new Error('Failed to save CV');
+  return res.json();
+}
+
+export async function duplicateCV(sourceId: string, label: string): Promise<CVMeta> {
+  const res = await fetch(`${API_BASE}/cvs?duplicateOf=${sourceId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label }),
+  });
+  if (!res.ok) throw new Error('Failed to duplicate CV');
   return res.json();
 }
 

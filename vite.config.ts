@@ -35,6 +35,7 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'node',
       exclude: ['**/node_modules/**', 'tests/e2e/**'],
+      setupFiles: ['./tests/setup/serverTestData.ts'],
       coverage: {
         provider: 'v8',
         reporter: ['text', 'html'],

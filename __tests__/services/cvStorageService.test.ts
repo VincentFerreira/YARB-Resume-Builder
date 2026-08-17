@@ -56,7 +56,7 @@ afterEach(() => {
 
 describe('listCVs', () => {
   it('returns an array of CV metadata', async () => {
-    const metas = [{ id: 'abc', name: 'My CV', updatedAt: 1, createdAt: 1 }];
+    const metas = [{ id: 'abc', label: 'My CV', updatedAt: 1, createdAt: 1 }];
     mockFetch(metas);
     const result = await listCVs();
     expect(result).toEqual(metas);
@@ -72,11 +72,11 @@ describe('listCVs', () => {
 
 describe('loadCV', () => {
   it('returns the CV record for a given id', async () => {
-    const record = { id: 'abc', name: 'My CV', data: minimalCV(), updatedAt: 1, createdAt: 1 };
+    const record = { id: 'abc', label: 'My CV', data: minimalCV(), updatedAt: 1, createdAt: 1 };
     mockFetch(record);
     const result = await loadCV('abc');
     expect(result.id).toBe('abc');
-    expect(result.name).toBe('My CV');
+    expect(result.label).toBe('My CV');
   });
 
   it('throws when CV not found', async () => {
@@ -89,19 +89,19 @@ describe('loadCV', () => {
 
 describe('createCV', () => {
   it('returns the created CV metadata', async () => {
-    const meta = { id: 'new-id', name: 'New CV', updatedAt: 1, createdAt: 1 };
+    const meta = { id: 'new-id', label: 'New CV', updatedAt: 1, createdAt: 1 };
     mockFetch(meta, 200);
     const result = await createCV('New CV', minimalCV());
     expect(result.id).toBe('new-id');
-    expect(result.name).toBe('New CV');
+    expect(result.label).toBe('New CV');
   });
 
-  it('posts to the correct URL with name and data', async () => {
-    mockFetch({ id: 'x', name: 'X', updatedAt: 1, createdAt: 1 });
+  it('posts to the correct URL with label and data', async () => {
+    mockFetch({ id: 'x', label: 'X', updatedAt: 1, createdAt: 1 });
     const cv = minimalCV();
     await createCV('X', cv);
     expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/cvs'),
+      expect.stringContaining('/api/cvs'),
       expect.objectContaining({ method: 'POST' })
     );
   });
@@ -116,10 +116,10 @@ describe('createCV', () => {
 
 describe('saveCV', () => {
   it('returns updated CV metadata', async () => {
-    const meta = { id: 'abc', name: 'Updated', updatedAt: 999 };
+    const meta = { id: 'abc', label: 'Updated', updatedAt: 999 };
     mockFetch(meta);
     const result = await saveCV('abc', 'Updated', minimalCV());
-    expect(result.name).toBe('Updated');
+    expect(result.label).toBe('Updated');
   });
 
   it('throws when save fails', async () => {

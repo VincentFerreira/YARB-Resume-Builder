@@ -66,7 +66,7 @@ const CVManager: React.FC<Props> = ({
       if (currentCVId) {
         const updated = await saveCV(currentCVId, name.trim(), cvData);
         onSaved(currentCVId, name.trim());
-        setCvs(prev => prev.map(c => c.id === currentCVId ? { ...c, name: name.trim(), updatedAt: updated.updatedAt } : c));
+        setCvs(prev => prev.map(c => c.id === currentCVId ? { ...c, label: name.trim(), updatedAt: updated.updatedAt } : c));
         notify('success', 'CV updated.');
       } else {
         const created = await createCV(name.trim(), cvData);
@@ -84,8 +84,8 @@ const CVManager: React.FC<Props> = ({
   const handleLoad = async (id: string) => {
     try {
       const record = await loadCV(id);
-      onLoad(record.data, record.id, record.name);
-      setName(record.name);
+      onLoad(record.data, record.id, record.label);
+      setName(record.label);
     } catch {
       notify('error', 'Unable to load this CV.');
     }
@@ -219,7 +219,7 @@ const CVManager: React.FC<Props> = ({
                   {cv.id === currentCVId && (
                     <span className="inline-block w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0" />
                   )}
-                  {cv.name}
+                  {cv.label}
                 </p>
                 <p className="text-xs text-slate-400 mt-0.5">{formatDate(cv.updatedAt)}</p>
               </div>

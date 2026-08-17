@@ -3,10 +3,13 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { exec } from 'child_process';
 import fs from 'fs';
-import fsp from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { randomUUID } from 'crypto';
+import { ensureDir } from './server/store.js';
+import { migrateLegacyCvs } from './server/migrate.js';
+import { registerTestHooks } from './server/testHooks.js';
+import { createCvsRouter } from './server/routes.cvs.js';
+import { createJobsRouter } from './server/routes.jobs.js';
 
 const app = express();
 const PORT = 3001;
@@ -15,8 +18,14 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 
-const CV_STORAGE_DIR = path.join(process.cwd(), 'cvs');
-fs.mkdirSync(CV_STORAGE_DIR, { recursive: true });
+const YARB_DATA_DIR = path.resolve(process.env.YARB_DATA_DIR ?? './data');
+const LEGACY_CV_STORAGE_DIR = path.join(process.cwd(), 'cvs');
+const CV_STORAGE_DIR = path.join(YARB_DATA_DIR, 'cvs');
+const JOBS_STORAGE_DIR = path.join(YARB_DATA_DIR, 'jobs');
+
+ensureDir(CV_STORAGE_DIR);
+ensureDir(JOBS_STORAGE_DIR);
+await migrateLegacyCvs({ legacyDir: LEGACY_CV_STORAGE_DIR, dataDir: YARB_DATA_DIR });
 
 const compileLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -93,78 +102,11 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-// CV storage endpoints
-const isValidId = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id);
+// CVthèque / Jobs API
+app.use('/api/cvs', createCvsRouter({ cvsDir: CV_STORAGE_DIR, jobsDir: JOBS_STORAGE_DIR }));
+app.use('/api/jobs', createJobsRouter({ jobsDir: JOBS_STORAGE_DIR, cvsDir: CV_STORAGE_DIR }));
 
-app.get('/cvs', async (_req, res) => {
-    try {
-        const files = await fsp.readdir(CV_STORAGE_DIR);
-        const metas = await Promise.all(
-            files
-                .filter(f => f.endsWith('.json'))
-                .map(async (f) => {
-                    const raw = await fsp.readFile(path.join(CV_STORAGE_DIR, f), 'utf-8');
-                    const { id, name, updatedAt, createdAt } = JSON.parse(raw);
-                    return { id, name, updatedAt, createdAt };
-                })
-        );
-        metas.sort((a, b) => b.updatedAt - a.updatedAt);
-        res.json(metas);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.get('/cvs/:id', async (req, res) => {
-    const { id } = req.params;
-    if (!isValidId(id)) return res.status(400).json({ error: 'Invalid ID' });
-    try {
-        const raw = await fsp.readFile(path.join(CV_STORAGE_DIR, `${id}.json`), 'utf-8');
-        res.json(JSON.parse(raw));
-    } catch {
-        res.status(404).json({ error: 'CV not found' });
-    }
-});
-
-app.post('/cvs', async (req, res) => {
-    const { name, data } = req.body;
-    if (!name || !data) return res.status(400).json({ error: 'name and data are required' });
-    const id = randomUUID();
-    const now = Date.now();
-    const record = { id, name, createdAt: now, updatedAt: now, data };
-    try {
-        await fsp.writeFile(path.join(CV_STORAGE_DIR, `${id}.json`), JSON.stringify(record));
-        res.json({ id, name, createdAt: now, updatedAt: now });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.put('/cvs/:id', async (req, res) => {
-    const { id } = req.params;
-    if (!isValidId(id)) return res.status(400).json({ error: 'Invalid ID' });
-    const { name, data } = req.body;
-    try {
-        const filePath = path.join(CV_STORAGE_DIR, `${id}.json`);
-        const existing = JSON.parse(await fsp.readFile(filePath, 'utf-8'));
-        const updated = { ...existing, name: name ?? existing.name, data: data ?? existing.data, updatedAt: Date.now() };
-        await fsp.writeFile(filePath, JSON.stringify(updated));
-        res.json({ id: updated.id, name: updated.name, updatedAt: updated.updatedAt });
-    } catch {
-        res.status(404).json({ error: 'CV not found' });
-    }
-});
-
-app.delete('/cvs/:id', async (req, res) => {
-    const { id } = req.params;
-    if (!isValidId(id)) return res.status(400).json({ error: 'Invalid ID' });
-    try {
-        await fsp.unlink(path.join(CV_STORAGE_DIR, `${id}.json`));
-        res.json({ success: true });
-    } catch {
-        res.status(404).json({ error: 'CV not found' });
-    }
-});
+registerTestHooks(app, { dataDir: YARB_DATA_DIR });
 
 export { app };
 

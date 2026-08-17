@@ -10,7 +10,7 @@ test('T1 - import happy path: bannière de succès, aucune erreur console', asyn
   });
   page.on('pageerror', (err) => consoleErrors.push(err.message));
 
-  await page.goto('/');
+  await page.goto('/cvs/new');
   await importJsonFixture(page, 'cv-complet.json');
 
   await expect(page.getByText('CV imported. Save it to keep it.')).toBeVisible();
@@ -19,7 +19,7 @@ test('T1 - import happy path: bannière de succès, aucune erreur console', asyn
 
 for (const fixtureName of ['cv-complet.json', 'cv-minimal.json']) {
   test(`T2 - tous les champs de ${fixtureName} apparaissent dans l'aperçu`, async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/cvs/new');
     await importJsonFixture(page, fixtureName);
     await expect(page.getByText('CV imported. Save it to keep it.')).toBeVisible();
     await closeCvManager(page);

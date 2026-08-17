@@ -1,10 +1,37 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import Anthropic from "@anthropic-ai/sdk";
-import { CVData, ATSAnalysisResult } from "../types";
+import { CVData, ATSAnalysisResult, ATSKeyword, JobWorkMode, JobContractType } from "../types";
 import { getLangText, getLangArray, LANGUAGE_CODES } from '../lib/i18n';
 
 // Types pour le provider IA
-export type AIProvider = 'gemini' | 'claude';
+export type AIProvider = 'gemini' | 'claude' | 'fake';
+
+export function atsProviderModel(provider: AIProvider): string {
+    if (provider === 'claude') return 'claude-sonnet-4-6';
+    if (provider === 'fake') return 'fake-keyword-match-v1';
+    return 'gemini';
+}
+
+// Flash(-lite) models can fully disable "thinking" (budget 0); Pro-tier models require
+// a non-zero budget and reject 0 outright. Disabling it on flash frees the model's whole
+// output-token budget for the actual JSON instead of internal reasoning, which is what
+// was causing very long CV/job-description pairs to hit the token cap and come back as
+// truncated, unparsable JSON ("Unterminated string in JSON...").
+const thinkingConfigFor = (model: string) => (model.includes('flash') ? { thinkingBudget: 0 } : undefined);
+
+// AI responses are occasionally truncated mid-output when they hit the model's output
+// token cap (very long CV + job description, or a model that ignores brevity
+// instructions) — JSON.parse then fails with a cryptic "Unterminated string" error.
+// Surface that as an actionable message instead.
+const parseAiJson = (text: string, context: string): any => {
+    try {
+        return JSON.parse(text);
+    } catch {
+        throw new Error(
+            `The ${context} response was cut off before it finished (likely too long to fit the model's output limit) and could not be parsed. Try again, or with a shorter/more concise job description.`
+        );
+    }
+};
 
 // Prompt partagé pour l'extraction de CV
 const RESUME_PARSER_PROMPT = `You are an expert resume parser. Extract information from the PDF resume into the JSON structure below.
@@ -48,6 +75,9 @@ const anthropic = new Anthropic({
 let cachedGeminiModel: string | null = null;
 
 const GEMINI_PREFERRED = [
+    'gemini-3.7-flash', 'gemini-3.7-pro',
+    'gemini-3.6-flash', 'gemini-3.6-pro',
+    'gemini-3.5-flash', 'gemini-3.5-pro',
     'gemini-3.1-flash', 'gemini-3.1-pro',
     'gemini-3-flash',   'gemini-3-pro',
     'gemini-2.5-flash', 'gemini-2.5-pro',
@@ -70,7 +100,10 @@ const getBestGeminiModel = async (): Promise<string> => {
             const data = await res.json();
             const models: Array<{ name: string; supportedGenerationMethods?: string[] }> = data.models ?? [];
             available = models
-                .filter(m => m.supportedGenerationMethods?.includes('generateContent') && !m.name.includes('embedding'))
+                .filter(m => m.supportedGenerationMethods?.includes('generateContent')
+                    && !m.name.includes('embedding')
+                    && !m.name.includes('-lite')
+                    && !m.name.includes('-image'))
                 .map(m => m.name.replace('models/', ''));
             console.log(`[Gemini] Modèles disponibles (${apiVersion}):`, available);
             if (available.length > 0) break;
@@ -117,6 +150,7 @@ const parseWithGemini = async (pdfBase64: string): Promise<any> => {
         },
         config: {
             responseMimeType: "application/json",
+            thinkingConfig: thinkingConfigFor(model),
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
@@ -183,7 +217,7 @@ const parseWithGemini = async (pdfBase64: string): Promise<any> => {
     });
 
     if (!response.text) throw new Error('Empty response from Gemini');
-    return JSON.parse(response.text);
+    return parseAiJson(response.text, 'resume parsing');
 };
 
 // Parse avec Claude
@@ -228,16 +262,25 @@ const parseWithClaude = async (pdfBase64: string): Promise<any> => {
         jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
 
-    return JSON.parse(jsonText);
+    return parseAiJson(jsonText, 'resume parsing');
 };
 
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = 90_000;
+// Structured ATS analysis is the heaviest call (large schema, "thinking" models
+// reasoning over long job descriptions), so it gets a more generous budget than
+// the lighter PDF/job-posting extraction calls.
+const ATS_TIMEOUT_MS = 150_000;
 
-export const withTimeout = <T>(promise: Promise<T>): Promise<T> => {
-    const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout: la requête a dépassé 60 secondes')), TIMEOUT_MS)
-    );
-    return Promise.race([promise, timeout]);
+export const withTimeout = <T>(promise: Promise<T>, ms: number = TIMEOUT_MS): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timeout: the request took longer than ${ms / 1000}s`)), ms);
+    });
+    // If the real request settles after we've already raced it out via the
+    // timeout branch, swallow its rejection so it doesn't surface as an
+    // unhandled promise rejection in the console.
+    promise.catch(() => {});
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 };
 
 // ─── ATS Analysis ────────────────────────────────────────────────────────────
@@ -321,6 +364,7 @@ const analyzeWithGemini = async (cvText: string, jobDescription: string): Promis
         },
         config: {
             responseMimeType: "application/json",
+            thinkingConfig: thinkingConfigFor(model),
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
@@ -336,7 +380,8 @@ const analyzeWithGemini = async (cvText: string, jobDescription: string): Promis
                                 frequency: { type: Type.NUMBER },
                                 importance: { type: Type.STRING },
                                 analysis: { type: Type.STRING }
-                            }
+                            },
+                            required: ['keyword', 'status', 'frequency', 'importance', 'analysis']
                         }
                     },
                     importantKeywords: {
@@ -349,7 +394,8 @@ const analyzeWithGemini = async (cvText: string, jobDescription: string): Promis
                                 frequency: { type: Type.NUMBER },
                                 importance: { type: Type.STRING },
                                 analysis: { type: Type.STRING }
-                            }
+                            },
+                            required: ['keyword', 'status', 'frequency', 'importance', 'analysis']
                         }
                     },
                     formattingChecks: {
@@ -360,7 +406,8 @@ const analyzeWithGemini = async (cvText: string, jobDescription: string): Promis
                                 label: { type: Type.STRING },
                                 status: { type: Type.STRING },
                                 detail: { type: Type.STRING }
-                            }
+                            },
+                            required: ['label', 'status', 'detail']
                         }
                     },
                     recommendations: {
@@ -372,22 +419,27 @@ const analyzeWithGemini = async (cvText: string, jobDescription: string): Promis
                                 issue: { type: Type.STRING },
                                 before: { type: Type.STRING },
                                 after: { type: Type.STRING }
-                            }
+                            },
+                            required: ['section', 'issue']
                         }
                     },
                     summary: { type: Type.STRING }
-                }
+                },
+                required: [
+                    'overallScore', 'estimatedNewScore', 'criticalKeywords',
+                    'importantKeywords', 'formattingChecks', 'recommendations', 'summary'
+                ]
             }
         }
     });
     if (!response.text) throw new Error('Empty response from Gemini');
-    return JSON.parse(response.text);
+    return parseAiJson(response.text, 'ATS analysis');
 };
 
 const analyzeWithClaude = async (cvText: string, jobDescription: string): Promise<any> => {
     const response = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 4000,
+        max_tokens: 8000,
         messages: [{
             role: "user",
             content: `${ATS_ANALYZER_PROMPT}\n\n== CV CONTENT ==\n${cvText}\n\n== JOB DESCRIPTION ==\n${jobDescription}`
@@ -406,7 +458,61 @@ const analyzeWithClaude = async (cvText: string, jobDescription: string): Promis
         jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
 
-    return JSON.parse(jsonText);
+    return parseAiJson(jsonText, 'ATS analysis');
+};
+
+// Deterministic, offline stand-in for the real LLM analyzers — no network call, same output
+// shape, score derived purely from keyword overlap between the job description and the CV
+// text. Only reachable when VITE_ATS_PROVIDER=fake exposes it in the UI (see components/
+// matches/ProviderPicker usage in JobDetail); keeps e2e scoring scenarios deterministic.
+const STOPWORDS = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'for', 'with', 'on', 'is', 'are', 'we', 'you', 'your', 'our', 'this', 'that', 'be', 'as', 'at']);
+
+function extractKeywords(text: string, max: number): string[] {
+    const seen = new Map<string, number>();
+    for (const word of text.toLowerCase().match(/[a-z][a-z0-9+.#-]{2,}/g) ?? []) {
+        if (STOPWORDS.has(word)) continue;
+        seen.set(word, (seen.get(word) ?? 0) + 1);
+    }
+    return [...seen.entries()].sort((a, b) => b[1] - a[1]).slice(0, max).map(([word]) => word);
+}
+
+const analyzeWithFake = (cvText: string, jobDescription: string): ATSAnalysisResult => {
+    const cvLower = cvText.toLowerCase();
+    const jdKeywords = extractKeywords(jobDescription, 10);
+    const toEntries = (words: string[], importance: 'critical' | 'important'): ATSKeyword[] =>
+        words.map((keyword) => {
+            const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const frequency = (cvLower.match(new RegExp(`\\b${escaped}\\b`, 'g')) ?? []).length;
+            const status: ATSKeyword['status'] = frequency > 0 ? 'present' : 'missing';
+            return {
+                keyword,
+                status,
+                frequency,
+                importance,
+                analysis: status === 'present' ? `Found ${frequency}x in the CV.` : 'Not found in the CV.',
+            };
+        });
+
+    const criticalKeywords = toEntries(jdKeywords.slice(0, 5), 'critical');
+    const importantKeywords = toEntries(jdKeywords.slice(5, 10), 'important');
+    const all = [...criticalKeywords, ...importantKeywords];
+    const presentCount = all.filter((k) => k.status === 'present').length;
+    const overallScore = all.length > 0 ? Math.round((presentCount / all.length) * 100) : 50;
+    const missingCount = all.length - presentCount;
+
+    return {
+        overallScore,
+        estimatedNewScore: Math.min(100, overallScore + missingCount * 5),
+        criticalKeywords,
+        importantKeywords,
+        formattingChecks: [
+            { label: 'Fake provider', status: 'pass', detail: 'No LLM call was made — score derived from keyword overlap only.' },
+        ],
+        recommendations: all
+            .filter((k) => k.status === 'missing')
+            .map((k) => ({ section: 'Skills', issue: `"${k.keyword}" is missing from the CV.` })),
+        summary: `Deterministic fake analysis: ${presentCount}/${all.length} keywords found.`,
+    };
 };
 
 export const analyzeATS = async (
@@ -415,10 +521,12 @@ export const analyzeATS = async (
     provider: AIProvider = 'gemini'
 ): Promise<ATSAnalysisResult> => {
     const cvText = serializeCVForATS(cvData);
+    if (provider === 'fake') return analyzeWithFake(cvText, jobDescription);
     return withTimeout(
         provider === 'claude'
             ? analyzeWithClaude(cvText, jobDescription)
-            : analyzeWithGemini(cvText, jobDescription)
+            : analyzeWithGemini(cvText, jobDescription),
+        ATS_TIMEOUT_MS
     ) as Promise<ATSAnalysisResult>;
 };
 
@@ -484,5 +592,120 @@ export const parseResumeFromPdf = async (
         })),
         certifications: [],
         languages: toBilingualArray(Array.isArray(extracted.languages) ? extracted.languages : [])
+    };
+};
+
+// ─── Job Posting Extraction ────────────────────────────────────────────────────
+
+export interface ExtractedJobFields {
+    company: string;
+    title: string;
+    location: string;
+    workMode: JobWorkMode | '';
+    contractType: JobContractType | '';
+    salaryRange: string;
+    keywords: string[];
+}
+
+const JOB_EXTRACTOR_PROMPT = `You are an expert at parsing job postings. Extract structured fields from the raw job posting text below.
+
+RULES:
+- "company": ONLY the hiring company's name, else empty string
+- "title": ONLY the job title, else empty string
+- "location": city/country if mentioned, else empty string
+- "workMode": "onsite", "hybrid" or "remote" only if explicitly stated, else empty string
+- "contractType": "CDI", "CDD", "freelance" or "internship" only if explicitly stated, else empty string
+- "salaryRange": salary/compensation range if mentioned, else empty string
+- "keywords": 5-10 distinct technical skills, tools or requirements mentioned
+
+Return ONLY valid JSON, no markdown, no code blocks. Exact schema:
+{"company": string, "title": string, "location": string, "workMode": string, "contractType": string, "salaryRange": string, "keywords": string[]}`;
+
+const extractJobWithGemini = async (rawText: string): Promise<any> => {
+    const model = await getBestGeminiModel();
+    const response = await geminiAi.models.generateContent({
+        model,
+        contents: { parts: [{ text: `${JOB_EXTRACTOR_PROMPT}\n\n== JOB POSTING ==\n${rawText}` }] },
+        config: {
+            responseMimeType: "application/json",
+            thinkingConfig: thinkingConfigFor(model),
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    company: { type: Type.STRING },
+                    title: { type: Type.STRING },
+                    location: { type: Type.STRING },
+                    workMode: { type: Type.STRING },
+                    contractType: { type: Type.STRING },
+                    salaryRange: { type: Type.STRING },
+                    keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+                },
+            },
+        },
+    });
+    if (!response.text) throw new Error('Empty response from Gemini');
+    return parseAiJson(response.text, 'job posting extraction');
+};
+
+const extractJobWithClaude = async (rawText: string): Promise<any> => {
+    const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: `${JOB_EXTRACTOR_PROMPT}\n\n== JOB POSTING ==\n${rawText}` }],
+    });
+    const textContent = response.content.find(c => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+        throw new Error('No text response from Claude');
+    }
+    let jsonText = textContent.text.trim();
+    if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    return parseAiJson(jsonText, 'job posting extraction');
+};
+
+const WORK_MODE_HINTS: [RegExp, JobWorkMode][] = [[/remote/i, 'remote'], [/hybrid/i, 'hybrid'], [/on-?site/i, 'onsite']];
+const CONTRACT_HINTS: [RegExp, JobContractType][] = [[/\bCDI\b/i, 'CDI'], [/\bCDD\b/i, 'CDD'], [/freelance/i, 'freelance'], [/internship/i, 'internship']];
+
+// Deterministic, offline stand-in: reads simple "Key: value" lines when present (as a
+// crafted test fixture would use), otherwise falls back to the first two non-empty lines
+// for title/company and keyword-frequency extraction for the rest — no LLM call.
+const extractJobFake = (rawText: string): ExtractedJobFields => {
+    const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+    const findField = (label: string) => {
+        const line = lines.find((l) => new RegExp(`^${label}\\s*:`, 'i').test(l));
+        return line ? line.split(':').slice(1).join(':').trim() : '';
+    };
+
+    const title = findField('title') || lines[0] || '';
+    const company = findField('company') || lines[1] || '';
+    const location = findField('location');
+    const salaryRange = findField('salary');
+
+    const workMode = WORK_MODE_HINTS.find(([re]) => re.test(rawText))?.[1] ?? '';
+    const contractType = CONTRACT_HINTS.find(([re]) => re.test(rawText))?.[1] ?? '';
+    const keywords = extractKeywords(rawText, 8);
+
+    return { company, title, location, workMode, contractType, salaryRange, keywords };
+};
+
+export const extractJobFromText = async (
+    rawText: string,
+    provider: AIProvider = 'gemini'
+): Promise<ExtractedJobFields> => {
+    if (provider === 'fake') return extractJobFake(rawText);
+    const extracted = await withTimeout(
+        provider === 'claude' ? extractJobWithClaude(rawText) : extractJobWithGemini(rawText)
+    );
+    return {
+        company: extracted.company || '',
+        title: extracted.title || '',
+        location: extracted.location || '',
+        workMode: (['onsite', 'hybrid', 'remote'] as const).includes(extracted.workMode) ? extracted.workMode : '',
+        contractType: (['CDI', 'CDD', 'freelance', 'internship'] as const).includes(extracted.contractType) ? extracted.contractType : '',
+        salaryRange: extracted.salaryRange || '',
+        keywords: Array.isArray(extracted.keywords) ? extracted.keywords : [],
     };
 };

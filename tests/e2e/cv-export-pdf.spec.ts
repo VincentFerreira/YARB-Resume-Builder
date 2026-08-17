@@ -9,7 +9,7 @@ import { readPdf } from '../helpers/pdf';
 test.setTimeout(60_000);
 
 async function importAndExportPdf(page: import('@playwright/test').Page, fixtureName: string) {
-  await page.goto('/');
+  await page.goto('/cvs/new');
   await importJsonFixture(page, fixtureName);
   await expect(page.getByText('CV imported. Save it to keep it.')).toBeVisible();
   await closeCvManager(page);

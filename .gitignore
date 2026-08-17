@@ -27,6 +27,7 @@ dist-ssr
 cv_*.pdf
 cv_*.json
 cvs/
+data/
 
 # agents / editor internals (not repo metadata)
 .agents
@@ -41,3 +42,6 @@ coverage/
 test-results/
 playwright-report/
 blob-report/
+
+# Playwright MCP (interactive session output, not test suite)
+.playwright-mcp/

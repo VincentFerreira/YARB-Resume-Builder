@@ -90,3 +90,93 @@ export interface ATSAnalysisResult {
   recommendations: ATSRecommendation[];
   summary: string;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// CVthèque / Jobs / ATS matching (docs/spec-pipeline-postes.md)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Cv metadata as stored server-side (everything except the CV content itself). */
+export interface CvMeta {
+  id: string;
+  label: string;
+  language: Language;
+  tags: string[];
+  contentHash: string;
+  createdAt: number;
+  updatedAt: number;
+  archivedAt?: string;
+}
+
+/** Full Cv record, as returned by GET /api/cvs/:id. */
+export interface CvRecord extends CvMeta {
+  data: CVData;
+}
+
+export const JOB_STATUSES = [
+  'lead',
+  'to_apply',
+  'applied',
+  'screening',
+  'interview',
+  'offer',
+  'rejected',
+  'archived',
+] as const;
+
+export type JobStatus = (typeof JOB_STATUSES)[number];
+
+export type JobWorkMode = 'onsite' | 'hybrid' | 'remote';
+export type JobContractType = 'CDI' | 'CDD' | 'freelance' | 'internship';
+
+export interface JobEvent {
+  id: string;
+  at: string; // ISO
+  type: 'status_change' | 'note' | 'follow_up' | 'interview' | 'match_submitted';
+  from?: JobStatus;
+  to?: JobStatus;
+  comment?: string;
+}
+
+/**
+ * Score for one CV against one job — embedded directly on the Job (§ "one active CV per job").
+ * Wraps the same `ATSAnalysisResult` the standalone ATS Checker produces, so the two screens
+ * can share one rendering component (`AtsReport`) instead of maintaining two report shapes.
+ */
+export interface AtsResult {
+  analysis: ATSAnalysisResult;
+  provider: 'claude' | 'gemini' | 'fake';
+  model: string;
+  promptVersion: string;
+  jobDescriptionHash: string;
+}
+
+export interface Job {
+  id: string;
+  company: string;
+  title: string;
+  status: JobStatus;
+  priority: 1 | 2 | 3;
+  location?: string;
+  workMode?: JobWorkMode;
+  contractType?: JobContractType;
+  salaryRange?: string;
+  url?: string;
+  source?: string;
+  contactName?: string;
+  descriptionRaw: string;
+  keywords: string[];
+  cvId?: string;
+  cvContentHash?: string;
+  ats?: AtsResult;
+  atsComputedAt?: string;
+  submitted: boolean;
+  submittedAt?: string;
+  exportedPdfPath?: string;
+  appliedAt?: string;
+  nextActionAt?: string;
+  nextActionLabel?: string;
+  notes?: string;
+  events: JobEvent[];
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+}

@@ -214,6 +214,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange }) => {
   const SectionHeader = ({ title, id }: { title: string; id: string }) => (
     <button
       onClick={() => setActiveSection(activeSection === id ? null : id)}
+      data-testid={`section-header-${id}`}
       className="w-full flex justify-between items-center p-4 bg-slate-50 hover:bg-slate-100 border-b border-slate-200 transition-colors"
     >
       <span className="font-semibold text-slate-700">{title}</span>
@@ -324,6 +325,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange }) => {
                   value={getLangText(skill.items, lang)}
                   onChange={(e) => updateSkill(index, 'items', e.target.value)}
                   placeholder={t.skillsListPlaceholder}
+                  data-testid={`skill-items-${index}`}
                 />
               </div>
             ))}

@@ -20,7 +20,7 @@ const STEPS: { id: AnalysisStep; label: string; sublabel: string }[] = [
 
 const STEP_ORDER: AnalysisStep[] = ['reading', 'sending', 'processing'];
 
-function categorizeError(raw: string): { friendly: string; technical: string | null } {
+function categorizeError(raw: string, timeoutSeconds: number): { friendly: string; technical: string | null } {
   const lower = raw.toLowerCase();
   if (lower.includes('401') || lower.includes('403') || lower.includes('api key') || lower.includes('unauthorized')) {
     return { friendly: 'Invalid or expired API key. Check your .env.local file.', technical: raw };
@@ -28,8 +28,8 @@ function categorizeError(raw: string): { friendly: string; technical: string | n
   if (lower.includes('429') || lower.includes('rate limit') || lower.includes('quota')) {
     return { friendly: 'Rate limit reached. Wait a few seconds and try again.', technical: raw };
   }
-  if (lower.includes('timeout') || lower.includes('expired') || lower.includes('60 seconds')) {
-    return { friendly: 'Request timed out (> 60 s). The API may be overloaded, please retry.', technical: null };
+  if (lower.includes('timeout') || lower.includes('expired')) {
+    return { friendly: `Request timed out (> ${timeoutSeconds} s). The API may be overloaded, please retry.`, technical: null };
   }
   if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('connection')) {
     return { friendly: 'Unable to reach the API. Check your Internet connection.', technical: null };
@@ -61,7 +61,7 @@ const AnalysisOverlay: React.FC<Props> = ({ step, provider, error, timeoutSecond
   const isDone = step === 'done';
   const currentIdx = STEP_ORDER.indexOf(step);
   const providerLabel = provider === 'gemini' ? 'Google Gemini' : 'Anthropic Claude';
-  const parsedError = error ? categorizeError(error) : null;
+  const parsedError = error ? categorizeError(error, timeoutSeconds) : null;
 
   return (
     <div className="absolute inset-0 bg-black/60 z-[60] flex items-center justify-center backdrop-blur-sm">
