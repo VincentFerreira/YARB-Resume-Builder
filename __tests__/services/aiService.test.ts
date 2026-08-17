@@ -172,23 +172,32 @@ describe('withTimeout', () => {
     await expect(withTimeout(failing)).rejects.toThrow('upstream error');
   });
 
-  it('rejects with a timeout error after 60 seconds', async () => {
+  it('rejects with a timeout error after the default 90 seconds', async () => {
     const neverResolves = new Promise<never>(() => {});
     const resultPromise = withTimeout(neverResolves);
 
-    vi.advanceTimersByTime(60_001);
+    vi.advanceTimersByTime(90_001);
 
-    await expect(resultPromise).rejects.toThrow('Timeout: la requête a dépassé 60 secondes');
+    await expect(resultPromise).rejects.toThrow('Timeout: the request took longer than 90s');
   });
 
-  it('does not reject before 60 seconds have elapsed', async () => {
+  it('does not reject before 90 seconds have elapsed', async () => {
     let settled = false;
     const neverResolves = new Promise<never>(() => {});
     withTimeout(neverResolves).catch(() => { settled = true; });
 
-    vi.advanceTimersByTime(59_999);
+    vi.advanceTimersByTime(89_999);
     await Promise.resolve();
 
     expect(settled).toBe(false);
+  });
+
+  it('honors a custom timeout in milliseconds', async () => {
+    const neverResolves = new Promise<never>(() => {});
+    const resultPromise = withTimeout(neverResolves, 5_000);
+
+    vi.advanceTimersByTime(5_001);
+
+    await expect(resultPromise).rejects.toThrow('Timeout: the request took longer than 5s');
   });
 });

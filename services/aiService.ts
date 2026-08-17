@@ -77,25 +77,22 @@ const anthropic = new Anthropic({
     dangerouslyAllowBrowser: true
 });
 
-// Discover the best available Gemini model via REST — avoids SDK version issues
-let cachedGeminiModel: string | null = null;
+// Pinned to the cheapest tier on purpose — do not swap for a pricier model (e.g. a
+// "-flash" or "-pro" variant) without confirming the cost tradeoff first.
+const GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
-const GEMINI_PREFERRED = [
-    'gemini-3.7-flash', 'gemini-3.7-pro',
-    'gemini-3.6-flash', 'gemini-3.6-pro',
-    'gemini-3.5-flash', 'gemini-3.5-pro',
-    'gemini-3.1-flash', 'gemini-3.1-pro',
-    'gemini-3-flash',   'gemini-3-pro',
-    'gemini-2.5-flash', 'gemini-2.5-pro',
-    'gemini-2.0-flash', 'gemini-2.0-pro',
-    'gemini-1.5-flash', 'gemini-1.5-pro',
-];
+let cachedGeminiModel: string | null = null;
+// The API's own outputTokenLimit for GEMINI_MODEL (65536 as of writing) — far above the
+// small fixed caps this code used to hardcode, which is what was causing large CV/job-
+// description pairs to come back truncated even though the model itself had plenty of
+// budget left. Falls back to a conservative default if the lookup below fails.
+let cachedGeminiOutputLimit: number | null = null;
+const DEFAULT_GEMINI_OUTPUT_LIMIT = 8192;
 
 const getBestGeminiModel = async (): Promise<string> => {
     if (cachedGeminiModel) return cachedGeminiModel;
 
     const apiKey = process.env.API_KEY;
-    let available: string[] = [];
 
     for (const apiVersion of ['v1', 'v1beta']) {
         try {
@@ -104,34 +101,27 @@ const getBestGeminiModel = async (): Promise<string> => {
             );
             if (!res.ok) continue;
             const data = await res.json();
-            const models: Array<{ name: string; supportedGenerationMethods?: string[] }> = data.models ?? [];
-            available = models
-                .filter(m => m.supportedGenerationMethods?.includes('generateContent')
-                    && !m.name.includes('embedding')
-                    && !m.name.includes('-lite')
-                    && !m.name.includes('-image'))
-                .map(m => m.name.replace('models/', ''));
-            console.log(`[Gemini] Modèles disponibles (${apiVersion}):`, available);
-            if (available.length > 0) break;
+            const models: Array<{ name: string; supportedGenerationMethods?: string[]; outputTokenLimit?: number }> = data.models ?? [];
+            const match = models.find(m => m.name.replace('models/', '') === GEMINI_MODEL
+                && m.supportedGenerationMethods?.includes('generateContent'));
+            if (match) {
+                cachedGeminiModel = GEMINI_MODEL;
+                cachedGeminiOutputLimit = match.outputTokenLimit ?? DEFAULT_GEMINI_OUTPUT_LIMIT;
+                console.log('[Gemini] Modèle :', cachedGeminiModel, '| outputTokenLimit:', cachedGeminiOutputLimit);
+                return cachedGeminiModel;
+            }
         } catch { /* try next version */ }
     }
 
-    if (available.length === 0) {
-        throw new Error('Aucun modèle Gemini disponible. Vérifiez votre clé API.');
-    }
+    throw new Error(`Le modèle Gemini "${GEMINI_MODEL}" n'est pas disponible avec cette clé API.`);
+};
 
-    for (const keyword of GEMINI_PREFERRED) {
-        const match = available.find(m => m.startsWith(keyword));
-        if (match) {
-            cachedGeminiModel = match;
-            console.log('[Gemini] Modèle sélectionné :', match);
-            return match;
-        }
-    }
-
-    cachedGeminiModel = available[0];
-    console.log('[Gemini] Modèle sélectionné (fallback) :', cachedGeminiModel);
-    return cachedGeminiModel;
+// Leaves headroom below the model's hard cap (some of that ceiling can be consumed by
+// internal accounting even at thinkingBudget 0) while still using the vast majority of
+// what the model actually supports, instead of a small hardcoded number.
+const geminiMaxOutputTokens = (): number => {
+    const limit = cachedGeminiOutputLimit ?? DEFAULT_GEMINI_OUTPUT_LIMIT;
+    return Math.max(4096, limit - 2048);
 };
 
 // Parse avec Gemini
@@ -274,8 +264,10 @@ const parseWithClaude = async (pdfBase64: string): Promise<any> => {
 const TIMEOUT_MS = 90_000;
 // Structured ATS analysis is the heaviest call (large schema, "thinking" models
 // reasoning over long job descriptions), so it gets a more generous budget than
-// the lighter PDF/job-posting extraction calls.
-const ATS_TIMEOUT_MS = 150_000;
+// the lighter PDF/job-posting extraction calls. Gemini can also need a second,
+// sequential call when the first is cut short by a recitation safety filter (see
+// ATS_ANTI_RECITATION_REMINDER), which can roughly double worst-case latency.
+const ATS_TIMEOUT_MS = 260_000;
 
 export const withTimeout = <T>(promise: Promise<T>, ms: number = TIMEOUT_MS): Promise<T> => {
     let timer: ReturnType<typeof setTimeout>;
@@ -339,13 +331,19 @@ export const serializeCVForATS = (data: CVData): string => {
 const ATS_ANALYZER_PROMPT = `You are an expert ATS (Applicant Tracking System) analyst and career coach.
 Analyze the CV against the job description and return a JSON object matching this exact schema.
 
+IMPORTANT: Never copy long verbatim passages from the job description into your output
+(analysis, issue, summary fields) — paraphrase in your own words. Quoting extended spans
+of the job description verbatim can trigger a content-safety cutoff and produce an
+incomplete response. Short keyword terms (a few words) and a short verbatim "before"
+snippet from the CV are fine.
+
 RULES:
 - overallScore: integer 0-100, current match between CV and job description
 - estimatedNewScore: integer 0-100, expected score after applying your recommendations
 - criticalKeywords: 5-10 non-negotiable keywords from the job (required skills, tools, certs). For each: keyword (exact term from JD), status ("present" if clearly in CV, "partial" if synonym/related found, "missing" if absent), frequency (exact count in CV, 0 if missing), importance: "critical", analysis: a 1-sentence contextual note (e.g. "Present in tools section but overshadowed by TypeScript — move Python earlier" or "Completely absent — critical gap for this role")
 - importantKeywords: 5-10 secondary keywords. Same schema, importance: "important", include analysis note for each
 - formattingChecks: ATS formatting checks. Cover: contact info completeness, use of action verbs, measurable achievements present, consistent date formats, bullet points usage, no keyword stuffing. status: "pass", "fail", or "warning", include a detail string
-- recommendations: 3-6 concrete actionable items. Each: section (e.g. "Summary", "Experience"), issue (the problem), before (snippet from CV), after (suggested rewrite)
+- recommendations: 3-6 concrete actionable items. Each: section (e.g. "Summary", "Experience"), issue (the problem), before (SHORT snippet from CV, max ~25 words — not a full paragraph), after (SHORT suggested rewrite, max ~25 words)
 - summary: 1-2 sentence plain-text overview of the match quality
 
 Return ONLY valid JSON, no markdown, no code blocks. Exact schema:
@@ -359,110 +357,121 @@ Return ONLY valid JSON, no markdown, no code blocks. Exact schema:
   "summary": string
 }`;
 
-// The full ATS schema (up to 20 keyword entries with per-entry analysis notes, plus
-// recommendations that quote verbatim "before"/"after" CV snippets) routinely runs to
-// several thousand output tokens — comfortably inside 16k normally, but a verbose model
-// or a long CV/JD pair can still reach it. ATS_RETRY_MAX_TOKENS gives a real truncation
-// a second shot with a much larger budget before surfacing an error to the user. Both
-// stay well under the ~21k non-streaming cap the Anthropic SDK enforces for this model.
-const ATS_MAX_TOKENS = 16000;
-const ATS_RETRY_MAX_TOKENS = 20000;
+// Claude's max_tokens has no per-model discovery endpoint, so it keeps a conservative
+// hardcoded budget — Gemini's real per-model ceiling is looked up instead (see
+// geminiMaxOutputTokens above), which is usually several times higher.
+const ATS_CLAUDE_MAX_TOKENS = 16000;
+const ATS_CLAUDE_RETRY_MAX_TOKENS = 20000;
+
+const ATS_RESPONSE_SCHEMA = {
+    type: Type.OBJECT,
+    properties: {
+        overallScore: { type: Type.NUMBER },
+        estimatedNewScore: { type: Type.NUMBER },
+        criticalKeywords: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    keyword: { type: Type.STRING },
+                    status: { type: Type.STRING },
+                    frequency: { type: Type.NUMBER },
+                    importance: { type: Type.STRING },
+                    analysis: { type: Type.STRING }
+                },
+                required: ['keyword', 'status', 'frequency', 'importance', 'analysis']
+            }
+        },
+        importantKeywords: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    keyword: { type: Type.STRING },
+                    status: { type: Type.STRING },
+                    frequency: { type: Type.NUMBER },
+                    importance: { type: Type.STRING },
+                    analysis: { type: Type.STRING }
+                },
+                required: ['keyword', 'status', 'frequency', 'importance', 'analysis']
+            }
+        },
+        formattingChecks: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    label: { type: Type.STRING },
+                    status: { type: Type.STRING },
+                    detail: { type: Type.STRING }
+                },
+                required: ['label', 'status', 'detail']
+            }
+        },
+        recommendations: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    section: { type: Type.STRING },
+                    issue: { type: Type.STRING },
+                    before: { type: Type.STRING },
+                    after: { type: Type.STRING }
+                },
+                required: ['section', 'issue']
+            }
+        },
+        summary: { type: Type.STRING }
+    },
+    required: [
+        'overallScore', 'estimatedNewScore', 'criticalKeywords',
+        'importantKeywords', 'formattingChecks', 'recommendations', 'summary'
+    ]
+};
+
+// Appended on retry only, after a first attempt got cut short by Gemini's recitation
+// safety filter (finishReason "RECITATION") — this happens when the model echoes back
+// long verbatim spans of the (often web-published, e.g. LinkedIn) job description, which
+// gets flagged as potential content recitation and stops generation mid-output.
+const ATS_ANTI_RECITATION_REMINDER = `\n\nREMINDER: Your previous attempt was cut off by a content-safety filter because it quoted too much of the job description verbatim. This time, paraphrase every reference to the job description in your own words — do not copy any phrase longer than a few words directly from it.`;
 
 const analyzeWithGemini = async (cvText: string, jobDescription: string): Promise<any> => {
     const model = await getBestGeminiModel();
-    const prompt = `${ATS_ANALYZER_PROMPT}\n\n== CV CONTENT ==\n${cvText}\n\n== JOB DESCRIPTION ==\n${jobDescription}`;
+    const basePrompt = `${ATS_ANALYZER_PROMPT}\n\n== CV CONTENT ==\n${cvText}\n\n== JOB DESCRIPTION ==\n${jobDescription}`;
+    const maxOutputTokens = geminiMaxOutputTokens();
 
-    const callGemini = async (maxOutputTokens: number) => {
-      const response = await geminiAi.models.generateContent({
-        model,
-        contents: {
-            parts: [{
-                text: prompt
-            }]
-        },
-        config: {
-            responseMimeType: "application/json",
-            thinkingConfig: thinkingConfigFor(model),
-            maxOutputTokens,
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    overallScore: { type: Type.NUMBER },
-                    estimatedNewScore: { type: Type.NUMBER },
-                    criticalKeywords: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                keyword: { type: Type.STRING },
-                                status: { type: Type.STRING },
-                                frequency: { type: Type.NUMBER },
-                                importance: { type: Type.STRING },
-                                analysis: { type: Type.STRING }
-                            },
-                            required: ['keyword', 'status', 'frequency', 'importance', 'analysis']
-                        }
-                    },
-                    importantKeywords: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                keyword: { type: Type.STRING },
-                                status: { type: Type.STRING },
-                                frequency: { type: Type.NUMBER },
-                                importance: { type: Type.STRING },
-                                analysis: { type: Type.STRING }
-                            },
-                            required: ['keyword', 'status', 'frequency', 'importance', 'analysis']
-                        }
-                    },
-                    formattingChecks: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                label: { type: Type.STRING },
-                                status: { type: Type.STRING },
-                                detail: { type: Type.STRING }
-                            },
-                            required: ['label', 'status', 'detail']
-                        }
-                    },
-                    recommendations: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                section: { type: Type.STRING },
-                                issue: { type: Type.STRING },
-                                before: { type: Type.STRING },
-                                after: { type: Type.STRING }
-                            },
-                            required: ['section', 'issue']
-                        }
-                    },
-                    summary: { type: Type.STRING }
-                },
-                required: [
-                    'overallScore', 'estimatedNewScore', 'criticalKeywords',
-                    'importantKeywords', 'formattingChecks', 'recommendations', 'summary'
-                ]
+    const callGemini = async (promptText: string) => {
+        const response = await geminiAi.models.generateContent({
+            model,
+            contents: { parts: [{ text: promptText }] },
+            config: {
+                responseMimeType: "application/json",
+                thinkingConfig: thinkingConfigFor(model),
+                maxOutputTokens,
+                responseSchema: ATS_RESPONSE_SCHEMA
             }
-        }
-      });
-      const finishReason = response.candidates?.[0]?.finishReason;
-      return { text: response.text, truncated: finishReason === 'MAX_TOKENS' };
+        });
+        const finishReason = response.candidates?.[0]?.finishReason;
+        console.log('[Gemini ATS]', { model, maxOutputTokens, finishReason, usage: response.usageMetadata });
+        return { text: response.text, finishReason };
     };
 
-    let { text, truncated } = await callGemini(ATS_MAX_TOKENS);
-    if (truncated) {
-        // Genuinely hit the output cap (not just a malformed response) — worth one
-        // retry with a much bigger budget before giving up on the user.
-        ({ text, truncated } = await callGemini(ATS_RETRY_MAX_TOKENS));
+    let { text, finishReason } = await callGemini(basePrompt);
+    if (finishReason === 'RECITATION') {
+        // Retrying with the exact same prompt would very likely hit the same wall —
+        // the cutoff is about *what* was being generated, not a token budget. A
+        // stronger paraphrasing instruction usually avoids it on the second pass.
+        ({ text, finishReason } = await callGemini(basePrompt + ATS_ANTI_RECITATION_REMINDER));
+    }
+
+    if (finishReason === 'RECITATION') {
+        throw new Error("The ATS analysis response was cut short by Gemini's content-safety filter (it detected the output reciting long verbatim passages from the job description) and could not be parsed. This usually happens with job postings copied from public listings — try again, it sometimes succeeds on a retry.");
+    }
+    if (finishReason === 'SAFETY') {
+        throw new Error('The ATS analysis response was blocked by Gemini\'s safety filters and could not be parsed. Try again, or check the job description for content that might trigger this.');
     }
     if (!text) throw new Error('Empty response from Gemini');
-    return parseAiJson(text, 'ATS analysis', truncated);
+    return parseAiJson(text, 'ATS analysis', finishReason === 'MAX_TOKENS');
 };
 
 const analyzeWithClaude = async (cvText: string, jobDescription: string): Promise<any> => {
@@ -490,9 +499,9 @@ const analyzeWithClaude = async (cvText: string, jobDescription: string): Promis
         return { jsonText, truncated: response.stop_reason === 'max_tokens' };
     };
 
-    let { jsonText, truncated } = await callClaude(ATS_MAX_TOKENS);
+    let { jsonText, truncated } = await callClaude(ATS_CLAUDE_MAX_TOKENS);
     if (truncated) {
-        ({ jsonText, truncated } = await callClaude(ATS_RETRY_MAX_TOKENS));
+        ({ jsonText, truncated } = await callClaude(ATS_CLAUDE_RETRY_MAX_TOKENS));
     }
 
     return parseAiJson(jsonText, 'ATS analysis', truncated);
