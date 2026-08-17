@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
+import fs from 'fs';
+import path from 'path';
+import { randomUUID } from 'crypto';
 import { app } from '../server.js';
 
 // Tests run against an isolated temp YARB_DATA_DIR (see tests/setup/serverTestData.ts),
@@ -96,6 +99,41 @@ describe('GET /api/cvs/:id', () => {
   it('returns 404 for an unknown valid UUID', async () => {
     const res = await request(app).get('/api/cvs/00000000-0000-0000-0000-000000000000');
     expect(res.status).toBe(404);
+  });
+
+  // Regression: CVs written before contentHash existed have no such field on disk.
+  // Scoring (POST /:id/score) requires cvContentHash, so a CV stuck without one can
+  // never be scored. GET should backfill it lazily rather than leaving it undefined.
+  it('backfills contentHash for a legacy CV record that predates the field', async () => {
+    const legacyId = randomUUID();
+    const cvsDir = path.join(process.env.YARB_DATA_DIR!, 'cvs');
+    fs.mkdirSync(cvsDir, { recursive: true });
+    const legacyRecord = {
+      id: legacyId,
+      label: 'Legacy CV',
+      language: 'fr',
+      tags: [],
+      data: { currentLanguage: 'fr' },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      // no contentHash — simulates a record written before the field existed
+    };
+    fs.writeFileSync(path.join(cvsDir, `${legacyId}.json`), JSON.stringify(legacyRecord));
+
+    try {
+      const res = await request(app).get(`/api/cvs/${legacyId}`);
+      expect(res.status).toBe(200);
+      expect(res.body.contentHash).toBeTruthy();
+
+      const onDisk = JSON.parse(fs.readFileSync(path.join(cvsDir, `${legacyId}.json`), 'utf-8'));
+      expect(onDisk.contentHash).toBe(res.body.contentHash);
+
+      const listRes = await request(app).get('/api/cvs');
+      const listed = listRes.body.find((c: any) => c.id === legacyId);
+      expect(listed?.contentHash).toBe(res.body.contentHash);
+    } finally {
+      await request(app).delete(`/api/cvs/${legacyId}`);
+    }
   });
 });
 

@@ -18,3 +18,10 @@ services:
       # container's Linux/arch) instead of letting the bind mount above shadow
       # it with the host's.
       - /yarb/node_modules
+      # Personal CV/job data lives outside the repo so a fresh clone always
+      # starts empty and a repo wipe/reset never touches it. Set
+      # YARB_DATA_HOST_DIR in a local .env (gitignored, not .env.local — this
+      # is compose-level interpolation, not a container env var) to point at
+      # your own external folder. Defaults to the in-repo (gitignored) ./data
+      # so a plain `docker compose up` still works with zero config.
+      - ${YARB_DATA_HOST_DIR:-./data}:/yarb/data

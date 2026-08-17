@@ -14,21 +14,27 @@ export function atsProviderModel(provider: AIProvider): string {
 
 // Flash(-lite) models can fully disable "thinking" (budget 0); Pro-tier models require
 // a non-zero budget and reject 0 outright. Disabling it on flash frees the model's whole
-// output-token budget for the actual JSON instead of internal reasoning, which is what
-// was causing very long CV/job-description pairs to hit the token cap and come back as
-// truncated, unparsable JSON ("Unterminated string in JSON...").
-const thinkingConfigFor = (model: string) => (model.includes('flash') ? { thinkingBudget: 0 } : undefined);
+// output-token budget for the actual JSON instead of internal reasoning. For pro-tier
+// fallbacks, cap the budget instead of leaving it unset — an unset budget defaults to
+// dynamic/unbounded thinking, which can itself eat most of maxOutputTokens and leave too
+// little room for the actual JSON, which is what was causing very long CV/job-description
+// pairs to hit the token cap and come back as truncated, unparsable JSON.
+const thinkingConfigFor = (model: string) => ({ thinkingBudget: model.includes('flash') ? 0 : 2048 });
 
 // AI responses are occasionally truncated mid-output when they hit the model's output
 // token cap (very long CV + job description, or a model that ignores brevity
 // instructions) — JSON.parse then fails with a cryptic "Unterminated string" error.
-// Surface that as an actionable message instead.
-const parseAiJson = (text: string, context: string): any => {
+// `wasTruncated` should reflect the provider's own stop/finish reason where the caller
+// can determine it, so the message only claims "cut off" when that's actually what
+// happened rather than for any malformed-JSON response.
+const parseAiJson = (text: string, context: string, wasTruncated: boolean = true): any => {
     try {
         return JSON.parse(text);
     } catch {
         throw new Error(
-            `The ${context} response was cut off before it finished (likely too long to fit the model's output limit) and could not be parsed. Try again, or with a shorter/more concise job description.`
+            wasTruncated
+                ? `The ${context} response was cut off before it finished (likely too long to fit the model's output limit) and could not be parsed. Try again, or with a shorter/more concise job description.`
+                : `The ${context} response wasn't valid JSON and could not be parsed. Please try again.`
         );
     }
 };
@@ -353,18 +359,31 @@ Return ONLY valid JSON, no markdown, no code blocks. Exact schema:
   "summary": string
 }`;
 
+// The full ATS schema (up to 20 keyword entries with per-entry analysis notes, plus
+// recommendations that quote verbatim "before"/"after" CV snippets) routinely runs to
+// several thousand output tokens — comfortably inside 16k normally, but a verbose model
+// or a long CV/JD pair can still reach it. ATS_RETRY_MAX_TOKENS gives a real truncation
+// a second shot with a much larger budget before surfacing an error to the user. Both
+// stay well under the ~21k non-streaming cap the Anthropic SDK enforces for this model.
+const ATS_MAX_TOKENS = 16000;
+const ATS_RETRY_MAX_TOKENS = 20000;
+
 const analyzeWithGemini = async (cvText: string, jobDescription: string): Promise<any> => {
     const model = await getBestGeminiModel();
-    const response = await geminiAi.models.generateContent({
+    const prompt = `${ATS_ANALYZER_PROMPT}\n\n== CV CONTENT ==\n${cvText}\n\n== JOB DESCRIPTION ==\n${jobDescription}`;
+
+    const callGemini = async (maxOutputTokens: number) => {
+      const response = await geminiAi.models.generateContent({
         model,
         contents: {
             parts: [{
-                text: `${ATS_ANALYZER_PROMPT}\n\n== CV CONTENT ==\n${cvText}\n\n== JOB DESCRIPTION ==\n${jobDescription}`
+                text: prompt
             }]
         },
         config: {
             responseMimeType: "application/json",
             thinkingConfig: thinkingConfigFor(model),
+            maxOutputTokens,
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
@@ -431,34 +450,52 @@ const analyzeWithGemini = async (cvText: string, jobDescription: string): Promis
                 ]
             }
         }
-    });
-    if (!response.text) throw new Error('Empty response from Gemini');
-    return parseAiJson(response.text, 'ATS analysis');
+      });
+      const finishReason = response.candidates?.[0]?.finishReason;
+      return { text: response.text, truncated: finishReason === 'MAX_TOKENS' };
+    };
+
+    let { text, truncated } = await callGemini(ATS_MAX_TOKENS);
+    if (truncated) {
+        // Genuinely hit the output cap (not just a malformed response) — worth one
+        // retry with a much bigger budget before giving up on the user.
+        ({ text, truncated } = await callGemini(ATS_RETRY_MAX_TOKENS));
+    }
+    if (!text) throw new Error('Empty response from Gemini');
+    return parseAiJson(text, 'ATS analysis', truncated);
 };
 
 const analyzeWithClaude = async (cvText: string, jobDescription: string): Promise<any> => {
-    const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 8000,
-        messages: [{
-            role: "user",
-            content: `${ATS_ANALYZER_PROMPT}\n\n== CV CONTENT ==\n${cvText}\n\n== JOB DESCRIPTION ==\n${jobDescription}`
-        }]
-    });
+    const prompt = `${ATS_ANALYZER_PROMPT}\n\n== CV CONTENT ==\n${cvText}\n\n== JOB DESCRIPTION ==\n${jobDescription}`;
 
-    const textContent = response.content.find(c => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
-        throw new Error('No text response from Claude');
+    const callClaude = async (maxTokens: number) => {
+        const response = await anthropic.messages.create({
+            model: "claude-sonnet-4-6",
+            max_tokens: maxTokens,
+            messages: [{ role: "user", content: prompt }]
+        });
+
+        const textContent = response.content.find(c => c.type === 'text');
+        if (!textContent || textContent.type !== 'text') {
+            throw new Error('No text response from Claude');
+        }
+
+        let jsonText = textContent.text.trim();
+        if (jsonText.startsWith('```json')) {
+            jsonText = jsonText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (jsonText.startsWith('```')) {
+            jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+
+        return { jsonText, truncated: response.stop_reason === 'max_tokens' };
+    };
+
+    let { jsonText, truncated } = await callClaude(ATS_MAX_TOKENS);
+    if (truncated) {
+        ({ jsonText, truncated } = await callClaude(ATS_RETRY_MAX_TOKENS));
     }
 
-    let jsonText = textContent.text.trim();
-    if (jsonText.startsWith('```json')) {
-        jsonText = jsonText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    } else if (jsonText.startsWith('```')) {
-        jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '');
-    }
-
-    return parseAiJson(jsonText, 'ATS analysis');
+    return parseAiJson(jsonText, 'ATS analysis', truncated);
 };
 
 // Deterministic, offline stand-in for the real LLM analyzers — no network call, same output

@@ -139,6 +139,7 @@ docker compose up --build
 - First run (or after changing `package.json`), use `--build` to rebuild the image; subsequent runs can just be `docker compose up`.
 - Your local files are mounted read-write into the container; `node_modules` stays the one installed inside the image (see the anonymous volume in `docker-compose.yml`) so it doesn't get shadowed by your host's.
 - Requires a `.env.local` file (see [Getting started](#getting-started)) — `docker-compose.yml` reads it via `env_file`.
+- By default `data/` (CVs and jobs, see above) lives inside the repo, gitignored — a fresh clone always starts with an empty CVthèque. To keep your data outside the repo entirely (e.g. so a `git clean`/repo wipe can't touch it), create a `.env` file (gitignored, separate from `.env.local`) at the repo root with `YARB_DATA_HOST_DIR=/absolute/path/on/your/host`; `docker-compose.yml` mounts that folder in instead.
 
 ### Option B — plain `docker run` (one-off, no live-reload)
 

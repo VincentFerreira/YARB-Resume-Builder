@@ -12,7 +12,17 @@ function errorBody(code, message) {
 
 async function readAllCvs(cvsDir) {
     const files = await listJsonFiles(cvsDir);
-    return Promise.all(files.map((f) => readJson(path.join(cvsDir, f))));
+    return Promise.all(files.map(async (f) => {
+        const filePath = path.join(cvsDir, f);
+        const record = await readJson(filePath);
+        // See the /:id backfill above — keeps the list view's staleness check accurate
+        // for CVs created before contentHash existed.
+        if (!record.contentHash) {
+            record.contentHash = sha256Json(record.data);
+            await writeJsonAtomic(filePath, record);
+        }
+        return record;
+    }));
 }
 
 async function isReferencedByActiveJob(jobsDir, cvId) {
@@ -59,7 +69,15 @@ export function createCvsRouter({ cvsDir, jobsDir }) {
         const { id } = req.params;
         if (!isValidId(id)) return res.status(400).json(errorBody('invalid_id', 'Invalid ID'));
         try {
-            const record = await readJson(path.join(cvsDir, `${id}.json`));
+            const filePath = path.join(cvsDir, `${id}.json`);
+            const record = await readJson(filePath);
+            // CVs created before contentHash existed have no such field on disk.
+            // Backfill it lazily so scoring (which requires it) works for older CVs
+            // without a dedicated migration step.
+            if (!record.contentHash) {
+                record.contentHash = sha256Json(record.data);
+                await writeJsonAtomic(filePath, record);
+            }
             res.json({
                 ...record,
                 label: record.label ?? record.name,
